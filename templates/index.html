@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UseAI Studio</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGV4dCB5PSIuOWVtIiBmb250LXNpemU9IjkwIj7wn5CwPC90ZXh0Pjwvc3ZnPg==">
+<!-- Google Fonts: Inter & JetBrains Mono -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-style">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg: #faf9f6;
+  --sidebar: #f4f3ee;
+  --surface: #ffffff;
+  --surface2: #f0eee6;
+  --border: #e6e3da;
+  --border-light: rgba(0,0,0,0.06);
+  --accent: #d97757;
+  --accent-dim: rgba(217,119,87,.1);
+  --accent-hover: #c35f3f;
+  --accent-light: #bd5b3a;
+  --text: #2d2a26;
+  --text2: #79746c;
+  --text3: #ada89f;
+  --user-bg: #f1e3d8;
+  --error: #dc2626;
+  --success: #16a34a;
+  --warn: #d97706;
+  --sidebar-w: 265px;
+}
+
+[data-theme="dark"] {
+  --bg: #18171a;
+  --sidebar: #1f1e22;
+  --surface: #27262b;
+  --surface2: #2f2e34;
+  --border: #3a3840;
+  --border-light: rgba(255,255,255,0.06);
+  --accent: #e0845e;
+  --accent-dim: rgba(224,132,94,.12);
+  --accent-hover: #d06640;
+  --accent-light: #e0845e;
+  --text: #ede9e4;
+  --text2: #9e9891;
+  --text3: #6b6660;
+  --user-bg: #33271f;
+  --error: #f87171;
+  --success: #4ade80;
+  --warn: #fbbf24;
+}
+
+html,body{height:100%;height:100dvh;overflow:hidden;max-width:100vw}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  background-color:var(--bg);
+  color:var(--text);
+  font-size:14px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* Password Setup Overlay */
+.setup-overlay{
+  position:fixed;inset:0;z-index:999;
+  background:radial-gradient(ellipse at 50% 40%, rgba(224,132,94,.15) 0%, var(--bg) 70%);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.setup-card{
+  position:relative; z-index:2;
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:44px 36px;max-width:380px;width:100%;text-align:center;
+  box-shadow:0 0 60px rgba(224,132,94,.15),0 20px 40px rgba(0,0,0,.3);
+}
+.setup-logo-icon{
+  width:52px;height:52px;border-radius:16px;
+  background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 20px;box-shadow:0 4px 20px var(--accent-dim);
+  color:#fff;font-size:24px;
+}
+.setup-card h1{font-size:24px;font-weight:600;letter-spacing:-.4px;margin-bottom:6px}
+.setup-card p{color:var(--text2);font-size:13.5px;margin-bottom:28px}
+.setup-input{
+  width:100%;padding:12px 16px;border-radius:10px;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-size:15px;font-family:inherit;
+  outline:none;margin-bottom:16px;text-align:center;letter-spacing:2px;
+  transition:border-color .2s;
+}
+.setup-input:focus{border-color:var(--accent)}
+.setup-btn{
+  width:100%;padding:13px;border-radius:10px;border:none;
+  background:var(--accent);color:#fff;font-size:15px;font-weight:600;
+  cursor:pointer;transition:background .15s,transform .15s;font-family:inherit;
+}
+.setup-btn:hover{background:var(--accent-hover)}
+.setup-btn:active{transform:scale(.98)}
+.setup-error{color:var(--error);font-size:13px;margin-top:14px;min-height:20px}
+
+/* App Layout */
+.app{display:flex;height:100vh;height:100dvh;position:relative}
+
+/* Sidebar */
+.sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);
+  background:var(--sidebar);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  z-index:40;
+}
+.sidebar-header{
+  padding:18px 16px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.sidebar-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+.sidebar-logo-icon{
+  width:32px;height:32px;border-radius:8px;
+  background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:16px;
+}
+.sidebar-title{font-weight:600;font-size:16px;letter-spacing:-.3px}
+.sidebar-title span{color:var(--accent-light)}
+
+.theme-toggle-btn{
+  background:none;border:none;color:var(--text2);cursor:pointer;
+  padding:6px;border-radius:8px;transition:background .15s,color .15s;
+  display:flex;align-items:center;justify-content:center;
+}
+.theme-toggle-btn:hover{background:var(--surface2);color:var(--text)}
+
+.new-chat-btn{
+  margin:14px 14px 8px;padding:11px;border-radius:10px;
+  background:var(--accent);color:#fff;border:none;
+  font-weight:600;font-size:13.5px;font-family:inherit;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .15s,transform .15s;
+}
+.new-chat-btn:hover{background:var(--accent-hover)}
+.new-chat-btn:active{transform:scale(.98)}
+
+.sidebar-section{padding:14px 14px 4px;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+
+.conv-list{padding:0 10px;overflow-y:auto;flex:1;min-height:0}
+.conv-empty{padding:12px 14px;font-size:12.5px;color:var(--text3);font-style:italic;text-align:center}
+
+.conv-item{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-radius:8px;cursor:pointer;transition:all .15s;
+  font-size:12.5px;color:var(--text2);border:1px solid transparent;
+  background:none;font-family:inherit;width:100%;text-align:left;margin-bottom:2px;
+  position:relative;
+}
+.conv-item:hover{background:var(--surface2);color:var(--text)}
+.conv-item.active{background:var(--accent-dim);color:var(--text);border-color:rgba(224,132,94,0.3)}
+.conv-item-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+.conv-title-input{
+  flex:1;background:var(--surface2);border:1px solid var(--accent);
+  border-radius:6px;color:var(--text);font-size:12.5px;font-family:inherit;
+  padding:2px 6px;outline:none;min-width:0;
+}
+
+.conv-item-actions{display:none;align-items:center;gap:4px}
+.conv-item:hover .conv-item-actions{display:flex}
+.conv-action-btn{
+  background:none;border:none;color:var(--text3);cursor:pointer;
+  padding:3px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+  transition:color .15s,background .15s;
+}
+.conv-action-btn:hover{color:var(--text);background:var(--border)}
+.conv-action-btn.delete:hover{color:var(--error)}
+
+/* Sidebar Footer Account Card */
+.sidebar-footer{
+  padding:12px;border-top:1px solid var(--border);
+  background:var(--sidebar);
+}
+.account-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px;
+}
+.account-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.account-info{display:flex;flex-direction:column;min-width:0}
+.account-status-label{font-size:10px;font-weight:600;color:var(--success);display:flex;align-items:center;gap:4px}
+.account-dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse-dot 2s infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+.account-email{font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+
+.refresh-acc-btn{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text2);
+  width:28px;height:28px;border-radius:7px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;
+}
+.refresh-acc-btn:hover{color:var(--accent);border-color:var(--accent)}
+.refresh-acc-btn.spinning svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-acc-btn.spinning{opacity:.6;pointer-events:none}
+
+/* AUTO MODE SWITCH & AUTO SCROLL SWITCH */
+.auto-mode-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-top:6px;border-top:1px solid var(--border);margin-top:2px;
+}
+.auto-mode-label{font-size:11px;color:var(--text2);font-weight:500;}
+.switch{
+  position:relative;display:inline-block;width:32px;height:18px;flex-shrink:0;
+}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{
+  position:absolute;cursor:pointer;inset:0;
+  background:var(--border);border-radius:18px;transition:.2s;
+}
+.switch .slider:before{
+  position:absolute;content:"";height:12px;width:12px;
+  left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;
+}
+.switch input:checked + .slider{background:var(--accent)}
+.switch input:checked + .slider:before{transform:translateX(14px)}
+
+/* Rate Limit Ask Card in Chat */
+.rate-limit-card{
+  background:var(--surface);border:1px solid var(--warn);border-radius:12px;
+  padding:14px;margin-top:10px;max-width:440px;box-shadow:0 4px 16px rgba(0,0,0,0.15);
+}
+.rate-limit-title{font-weight:600;font-size:13.5px;color:var(--warn);margin-bottom:6px}
+.rate-limit-card p{font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:12px}
+.rate-limit-actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn-renew-yes{
+  padding:7px 12px;border-radius:8px;border:none;background:var(--accent);
+  color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;
+}
+.btn-renew-yes:hover{background:var(--accent-hover)}
+.btn-renew-no{
+  padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);
+  color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;
+}
+.btn-renew-no:hover{background:var(--border);color:var(--text)}
+
+/* Main Chat Area */
+.chat-area{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;background:var(--bg)}
+
+/* Top Header Bar & Download Menu */
+.topbar{
+  height:54px;padding:0 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg);z-index:20;position:relative;
+}
+.hamburger-btn{
+  display:none;background:none;border:none;color:var(--text2);cursor:pointer;
+  padding:6px;border-radius:6px;margin-right:8px;
+}
+.hamburger-btn:hover{background:var(--surface2);color:var(--text)}
+
+.topbar-info{display:flex;align-items:center;gap:12px;min-width:0}
+.topbar-title-text{font-weight:600;font-size:15px;letter-spacing:-.3px}
+
+.topbar-right-actions{display:flex;align-items:center;gap:8px;position:relative}
+
+.icon-action-btn{
+  display:flex;align-items:center;gap:6px;padding:6px 10px;
+  border-radius:8px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text2);font-size:12px;
+  font-weight:500;cursor:pointer;transition:all .15s;font-family:inherit;
+}
+.icon-action-btn:hover{background:var(--border);color:var(--text)}
+
+/* Download Export Menu */
+.download-menu{
+  display:none;position:absolute;top:calc(100% + 8px);right:0;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:6px;min-width:200px;z-index:300;
+  box-shadow:0 10px 30px rgba(0,0,0,0.25);animation:popIn .15s ease;
+}
+.download-menu.open{display:block}
+.download-menu-item{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-radius:8px;border:none;background:none;cursor:pointer;
+  font-size:12.5px;color:var(--text2);font-family:inherit;text-align:left;
+  width:100%;transition:background .12s,color .12s;
+}
+.download-menu-item:hover{background:var(--surface2);color:var(--text)}
+
+/* Chat Messages Container */
+.messages-container{
+  flex:1;overflow-y:auto;padding:24px 0 30px;
+  scroll-behavior:smooth;position:relative;
+}
+.messages-inner{
+  max-width:780px;margin:0 auto;padding:0 20px;
+  display:flex;flex-direction:column;gap:24px;
+}
+
+/* HORIZONTALLY CENTERED SCROLL-TO-BOTTOM FLOATING BUTTON */
+.scroll-bottom-btn{
+  position:fixed !important;
+  bottom:100px !important;
+  left:50% !important;
+  transform:translateX(-50%) !important;
+  width:36px;height:36px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text2);box-shadow:0 4px 16px rgba(0,0,0,0.25);
+  display:none;align-items:center;justify-content:center;
+  cursor:pointer;z-index:90 !important;transition:all .2s ease;
+}
+.scroll-bottom-btn.show{display:flex !important;}
+.scroll-bottom-btn:hover{
+  background:var(--surface2);color:var(--text);border-color:var(--accent);
+  transform:translateX(-50%) translateY(-2px) !important;
+}
+
+/* Empty State */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:80px 20px;text-align:center;gap:14px;
+}
+.empty-icon{
+  width:56px;height:56px;border-radius:16px;
+  background:var(--accent-dim);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;box-shadow:0 4px 20px var(--accent-dim);
+}
+.empty-title{font-size:20px;font-weight:600;letter-spacing:-.4px}
+.empty-desc{font-size:13.5px;color:var(--text2);max-width:440px;line-height:1.6}
+
+/* Message Item - Modern Chat Bubbles Layout */
+.msg-item{
+  display:flex;gap:12px;animation:fadeIn .2s ease;
+  max-width:100%;position:relative;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* Sağlı - Sollu Hizalama: Kullanıcı mesajları sağda, AI solda */
+.msg-item.user{justify-flex-end;flex-direction:row-reverse}
+
+.msg-avatar{
+  width:32px;height:32px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:600;
+}
+.msg-item.user .msg-avatar{
+  background:var(--user-bg);color:var(--accent-light);border:1px solid rgba(224,132,94,0.3);
+}
+.msg-item.assistant .msg-avatar{
+  background:var(--accent);color:#fff;
+}
+
+.msg-content{flex:1;min-width:0;padding-top:2px;position:relative}
+.msg-item.user .msg-content{display:flex;flex-direction:column;align-items:flex-end}
+
+.msg-sender{
+  font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:4px;display:flex;align-items:center;gap:8px;
+}
+
+/* USE IN PROMPT ARROW ON HOVER */
+.msg-use-btn{
+  position:absolute;bottom:-20px;left:0;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text3);border-radius:6px;padding:2px 6px;
+  font-size:11px;cursor:pointer;opacity:0;pointer-events:none;
+  transition:all .15s;display:flex;align-items:center;gap:4px;
+}
+.msg-item.user .msg-use-btn{left:auto;right:0}
+.msg-item:hover .msg-use-btn{opacity:1;pointer-events:auto}
+.msg-use-btn:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
+
+.msg-bubble{
+  color:var(--text);line-height:1.7;font-size:14px;
+  word-wrap:break-word;overflow-wrap:break-word;
+}
+.msg-item.user .msg-bubble{
+  background:var(--user-bg);border:1px solid rgba(224,132,94,0.25);
+  padding:10px 14px;border-radius:12px 2px 12px 12px;max-width:85%;
+}
+.msg-item.assistant .msg-bubble{
+  background:transparent;padding:0;
+}
+
+.msg-bubble p{margin-bottom:12px}
+.msg-bubble p:last-child{margin-bottom:0}
+.msg-bubble h1,.msg-bubble h2,.msg-bubble h3,.msg-bubble h4{
+  font-weight:600;color:var(--text);margin:14px 0 6px;line-height:1.3;
+}
+.msg-bubble h1{font-size:19px}.msg-bubble h2{font-size:17px}.msg-bubble h3{font-size:15px}
+.msg-bubble ul,.msg-bubble ol{margin:8px 0 12px 20px}
+.msg-bubble li{margin-bottom:4px}
+.msg-bubble blockquote{
+  border-left:3px solid var(--accent);padding:6px 12px;
+  background:var(--surface2);border-radius:0 8px 8px 0;
+  margin:10px 0;font-style:italic;color:var(--text2);
+}
+
+/* HIGH-CONTRAST SYNTAX HIGHLIGHTING & BEAUTIFUL CODE HEADER BAR */
+.msg-bubble code{
+  background:rgba(224,132,94,0.12);border:1px solid rgba(224,132,94,0.2);
+  padding:2px 6px;border-radius:4px;font-size:12.5px;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  color:var(--accent-light);font-weight:500;
+}
+
+.msg-bubble pre{
+  position:relative;margin:12px 0;border-radius:10px;
+  background:var(--surface2) !important;border:1px solid var(--border);
+  overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.2);
+}
+.code-header-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);
+  font-weight:500;
+}
+.code-header-lang{display:flex;align-items:center;gap:6px;text-transform:lowercase}
+.code-copy-btn{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:5px;color:var(--text2);padding:2px 8px;font-size:11px;
+  font-weight:500;cursor:pointer;transition:all .15s;font-family:inherit;
+}
+.code-copy-btn:hover{background:var(--accent-dim);color:var(--text);border-color:var(--accent)}
+
+.msg-bubble pre code{
+  background:none !important;border:none !important;
+  padding:14px !important;font-size:12.5px;display:block;
+  overflow-x:auto;line-height:1.65;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+}
+
+/* Image Grid in Chat */
+.msg-image-grid{
+  display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+  gap:10px;margin-top:12px;
+}
+.img-card{
+  position:relative;border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);background:var(--surface);
+  box-shadow:0 2px 10px rgba(0,0,0,0.1);
+  transition:transform .2s ease,box-shadow .2s ease;
+}
+.img-card:hover{transform:scale(1.01);box-shadow:0 6px 20px rgba(0,0,0,0.2)}
+.img-card img{
+  width:100%;height:auto;display:block;cursor:pointer;
+  transition:transform .3s ease;
+}
+.img-card:hover img{transform:scale(1.02)}
+
+.img-overlay-actions{
+  position:absolute;bottom:0;inset-x:0;padding:10px;
+  background:linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+  display:flex;align-items:center;justify-content:flex-end;gap:6px;
+  opacity:0;transition:opacity .2s ease;
+}
+.img-card:hover .img-overlay-actions{opacity:1}
+.img-btn{
+  background:rgba(255,255,255,0.2);backdrop-filter:blur(6px);
+  border:1px solid rgba(255,255,255,0.3);color:#fff;
+  padding:4px 8px;border-radius:6px;font-size:11px;font-weight:500;
+  cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:4px;
+  text-decoration:none;
+}
+.img-btn:hover{background:rgba(255,255,255,0.4)}
+
+/* Status / Streaming Bar */
+.status-badge{
+  display:inline-flex;align-items:center;gap:8px;padding:5px 10px;
+  border-radius:16px;background:var(--accent-dim);border:1px solid rgba(224,132,94,0.3);
+  color:var(--accent-light);font-size:12px;font-weight:500;margin-top:6px;
+}
+.pulse-spinner{
+  width:7px;height:7px;border-radius:50%;background:var(--accent);
+  animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;
+}
+@keyframes ping{75%,100%{transform:scale(2);opacity:0}}
+
+/* Attachment Chips */
+.attachments-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.att-chip{
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  font-size:11.5px;color:var(--text);position:relative;
+}
+.att-chip-remove{
+  background:none;border:none;color:var(--text3);cursor:pointer;
+  padding:1px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+}
+.att-chip-remove:hover{color:var(--error)}
+
+/* Input Dock Area */
+.input-dock{
+  padding:0 20px 20px;
+  max-width:780px;width:100%;margin:0 auto;
+}
+.input-container{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:12px 14px 10px;
+  box-shadow:0 6px 30px rgba(0,0,0,0.15);
+  transition:border-color .2s,box-shadow .2s;
+  position:relative;
+}
+.input-container:focus-within{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-dim),0 6px 30px rgba(0,0,0,0.2);
+}
+
+.input-box-textarea{
+  width:100%;background:none;border:none;outline:none;
+  color:var(--text);font-size:14px;font-family:inherit;
+  line-height:1.5;resize:none;max-height:160px;min-height:28px;
+}
+.input-box-textarea::placeholder{color:var(--text3)}
+
+/* Active Mode Banner & Sub-Controls */
+.active-mode-banner{
+  display:none;align-items:center;justify-content:space-between;
+  padding:6px 12px;border-radius:10px;margin-bottom:8px;
+  font-size:12px;font-weight:500;gap:8px;flex-wrap:wrap;
+}
+.active-mode-banner.image-mode{
+  display:flex;background:var(--accent-dim);
+  border:1px solid rgba(224,132,94,0.3);color:var(--accent-light);
+}
+.active-mode-banner.web-mode{
+  display:flex;background:rgba(22,163,74,0.12);
+  border:1px solid rgba(22,163,74,0.3);color:var(--success);
+}
+.banner-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+.input-toolbar{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);
+}
+.input-toolbar-left{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1;min-width:0;}
+.input-toolbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+
+/* Custom Dropdown Trigger Buttons */
+.tool-pill{
+  display:flex;align-items:center;gap:5px;padding:5px 10px;
+  border-radius:8px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text2);font-size:12px;
+  font-weight:500;cursor:pointer;transition:all .15s;font-family:inherit;
+}
+.tool-pill:hover{background:var(--border);color:var(--text)}
+.tool-pill.active{background:var(--accent-dim);color:var(--accent-light);border-color:rgba(224,132,94,0.4)}
+
+/* ATTACH BUTTON EQUAL SIZE TO SEND BUTTON */
+.attach-action-btn{
+  width:34px;height:34px;border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--surface2);color:var(--text2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;
+}
+.attach-action-btn:hover{background:var(--border);color:var(--text);border-color:var(--accent)}
+
+/* SEND / STOP ACTION BUTTON */
+.send-action-btn{
+  width:34px;height:34px;border-radius:10px;border:none;
+  background:var(--accent);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .15s,box-shadow .15s,background .2s;
+  box-shadow:0 2px 8px var(--accent-dim);
+  flex-shrink:0;
+}
+.send-action-btn:hover{background:var(--accent-hover);transform:scale(1.03)}
+.send-action-btn:active{transform:scale(.97)}
+.send-action-btn.stop-btn{
+  background:var(--error) !important;
+  box-shadow:0 2px 10px rgba(239,68,68,0.4) !important;
+}
+
+/* Popover Dropdown Menus */
+.popover-menu{
+  position:absolute;bottom:calc(100% + 8px);left:0;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:6px;min-width:220px;max-height:340px;
+  overflow-y:auto;z-index:100;box-shadow:0 10px 30px rgba(0,0,0,0.3);
+  display:none;animation:popIn .15s ease;
+}
+.popover-menu.open{display:block}
+@keyframes popIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.popover-header{
+  padding:6px 8px;font-size:10.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--text3);
+}
+.popover-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 10px;border-radius:8px;cursor:pointer;
+  font-size:12.5px;color:var(--text2);transition:all .12s;
+}
+.popover-item:hover{background:var(--surface2);color:var(--text)}
+.popover-item.selected{background:var(--accent-dim);color:var(--accent-light);font-weight:600}
+
+/* Model Selector Popover Search */
+.model-search-input{
+  width:100%;padding:6px 10px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-size:12px;outline:none;margin-bottom:6px;
+}
+.model-search-input:focus{border-color:var(--accent)}
+
+/* Toast Notifications Container */
+.toast-wrap{
+  position:fixed;top:16px;right:16px;z-index:500;
+  display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none;
+}
+.toast{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;font-size:12.5px;color:var(--text);
+  box-shadow:0 10px 30px rgba(0,0,0,0.25);max-width:280px;pointer-events:all;
+  animation:toastIn .2s ease;display:flex;align-items:center;gap:8px;
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.toast.success{border-color:var(--success);color:var(--success)}
+.toast.error{border-color:var(--error);color:var(--error)}
+
+/* Image Lightbox */
+.lightbox-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
+  z-index:300;display:none;align-items:center;justify-content:center;padding:20px;
+}
+.lightbox-modal.open{display:flex}
+.lightbox-img{max-width:90vw;max-height:85vh;border-radius:10px;box-shadow:0 0 40px rgba(0,0,0,0.8)}
+.lightbox-close{
+  position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.2);
+  border:none;color:#fff;width:36px;height:36px;border-radius:50%;
+  cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;
+}
+
+/* MOBILE OPTIMIZATION FOR SIDEBAR & PROMPT TOOLBAR */
+@media(max-width:768px){
+  .sidebar{
+    position:fixed !important;
+    top:0 !important;
+    left:0 !important;
+    bottom:0 !important;
+    height:100vh !important;
+    height:100dvh !important;
+    width:270px !important;
+    min-width:270px !important;
+    max-width:80vw !important;
+    transform:translateX(-100%);
+    z-index:1000 !important;
+    background:var(--sidebar) !important;
+    border-right:1px solid var(--border);
+  }
+  .sidebar.open{
+    transform:translateX(0) !important;
+    box-shadow:10px 0 40px rgba(0,0,0,0.6) !important;
+  }
+  .hamburger-btn{display:flex}
+  .sidebar-backdrop{
+    display:none;position:fixed;inset:0;
+    background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);
+    z-index:999;
+  }
+  .sidebar-backdrop.open{display:block}
+
+  .scroll-bottom-btn{
+    bottom:85px !important;
+    width:34px;height:34px;
+  }
+
+  .input-dock{padding:0 12px 14px;}
+  .input-toolbar{gap:4px;}
+  .input-toolbar-left{
+    gap:4px;
+    flex-wrap:nowrap;
+    min-width:0;
+  }
+  .tool-pill{
+    padding:4px 7px;
+    font-size:11px;
+    gap:3px;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- PASSWORD LOGIN SETUP OVERLAY -->
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-card">
+    <div class="setup-logo-icon">🔑</div>
+    <h1>UseAI Studio</h1>
+    <p>Devam etmek için uygulama şifresini girin.</p>
+    <form id="setupForm" onsubmit="handleLogin(event)">
+      <input type="password" class="setup-input" id="passwordInput" placeholder="Şifre" autofocus required>
+      <button type="submit" class="setup-btn" id="loginBtn">Giriş Yap</button>
+    </form>
+    <div class="setup-error" id="setupError"></div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- SIDEBAR BACKDROP FOR MOBILE -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <a href="#" class="sidebar-logo">
+        <div class="sidebar-logo-icon">🤖</div>
+        <div class="sidebar-title">UseAI <span>Studio</span></div>
+      </a>
+      <button class="theme-toggle-btn" id="themeToggleBtn" title="Tema Değiştir">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+
+    <button class="new-chat-btn" id="newChatBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Yeni Sohbet
+    </button>
+
+    <div class="sidebar-section">Sohbet Geçmişi</div>
+    <div class="conv-list" id="convList">
+      <!-- Conversation items rendered here -->
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="account-card">
+        <div class="account-row">
+          <div class="account-info">
+            <div class="account-status-label">
+              <span class="account-dot"></span> UseAI Aktif
+            </div>
+            <div class="account-email" id="accountEmailText">Oturum açılıyor...</div>
+          </div>
+          <button class="refresh-acc-btn" id="resetAccountBtn" title="Yeni Geçici Hesap Tanımla">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          </button>
+        </div>
+
+        <div class="auto-mode-row">
+          <span class="auto-mode-label">Otomatik Hesap Yenileme</span>
+          <label class="switch">
+            <input type="checkbox" id="autoRenewSwitch" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="auto-mode-row">
+          <span class="auto-mode-label">Otomatik Kaydırma</span>
+          <label class="switch">
+            <input type="checkbox" id="autoScrollSwitch" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CHAT AREA -->
+  <main class="chat-area">
+    <!-- Topbar Header -->
+    <header class="topbar">
+      <div class="topbar-info">
+        <button class="hamburger-btn" id="hamburgerBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title-text" id="activeConvTitle">Yeni Sohbet</div>
+      </div>
+
+      <!-- Topbar Right Actions (Export Chat Download Menu) -->
+      <div class="topbar-right-actions">
+        <button class="icon-action-btn" id="downloadMenuBtn" title="Sohbeti Dışa Aktar">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span>Dışa Aktar</span>
+        </button>
+
+        <div class="download-menu" id="downloadMenu">
+          <button class="download-menu-item" id="downloadMdBtn">
+            📄 Markdown (.md) Olarak İndir
+          </button>
+          <button class="download-menu-item" id="downloadTxtBtn">
+            📝 Düz Metin (.txt) Olarak İndir
+          </button>
+          <button class="download-menu-item" id="downloadJsonBtn">
+            ⚙️ JSON (.json) Olarak İndir
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Messages Container -->
+    <div class="messages-container" id="messagesContainer">
+      <div class="messages-inner" id="messagesInner">
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">💬</div>
+          <div class="empty-title">Size nasıl yardımcı olabilirim?</div>
+          <div class="empty-desc">30+ AI modeli, görsel üretimi ve canlı web araması ile sohbet edin.</div>
+        </div>
+      </div>
+
+      <!-- HORIZONTALLY CENTERED SCROLL-TO-BOTTOM FLOATING BUTTON -->
+      <button class="scroll-bottom-btn" id="scrollBottomBtn" title="En aşağı kaydır">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+      </button>
+    </div>
+
+    <!-- Input Dock -->
+    <div class="input-dock">
+      <!-- Active Mode Indicator Banner & Sub-Controls -->
+      <div class="active-mode-banner" id="activeModeBanner">
+        <span id="activeModeBannerText">🖼️ Görsel Üretim Modu</span>
+        
+        <div class="banner-controls" id="bannerControls">
+          <!-- Image Model Picker Pill -->
+          <div style="position:relative; display:none;" id="imgModelPickerWrapper">
+            <button class="tool-pill active" id="imgModelPickerBtn">
+              <span id="selectedImgModelLabel">Nano Banana 2</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="popover-menu" id="imgModelPopover">
+              <div class="popover-header">Görsel Modeli</div>
+              <div id="imgModelListContainer"></div>
+            </div>
+          </div>
+
+          <!-- Aspect Ratio Picker Pill -->
+          <div style="position:relative; display:none;" id="aspectPickerWrapper">
+            <button class="tool-pill active" id="aspectPickerBtn">
+              <span id="selectedAspectLabel">16:9</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="popover-menu" id="aspectPopover">
+              <div class="popover-header">En-Boy Oranı</div>
+              <div id="aspectListContainer"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Attachments Bar -->
+      <div class="attachments-bar" id="attachmentsBar"></div>
+
+      <div class="input-container">
+        <textarea class="input-box-textarea" id="userInput" placeholder="Bir şeyler yazın veya komut verin..." rows="1"></textarea>
+        
+        <div class="input-toolbar">
+          <div class="input-toolbar-left">
+            <!-- Model Picker Pill -->
+            <div style="position:relative;">
+              <button class="tool-pill" id="modelPickerBtn">
+                <span id="selectedModelLabel">Opus 5</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <!-- Model Popover -->
+              <div class="popover-menu" id="modelPopover">
+                <input type="text" class="model-search-input" id="modelSearchInput" placeholder="Model ara...">
+                <div id="modelListContainer"></div>
+              </div>
+            </div>
+
+            <!-- Web Search Toggle Pill -->
+            <button class="tool-pill" id="webSearchToggleBtn">
+              🌐 Web
+            </button>
+
+            <!-- Image Mode Toggle Pill -->
+            <button class="tool-pill" id="imageModeToggleBtn">
+              🖼️ Görsel
+            </button>
+          </div>
+
+          <div class="input-toolbar-right">
+            <!-- File Upload Button (EQUAL SIZE TO SEND BUTTON) -->
+            <input type="file" id="fileInput" style="display:none;" multiple>
+            <button class="attach-action-btn" id="uploadFileBtn" title="Dosya veya Referans Görsel Ekle">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+
+            <!-- Send / Stop Button -->
+            <button class="send-action-btn" id="sendBtn" title="Gönder">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="send-icon"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- LIGHTBOX MODAL -->
+<div class="lightbox-modal" id="lightboxModal">
+  <button class="lightbox-close" id="lightboxClose">&times;</button>
+  <img class="lightbox-img" id="lightboxImg" src="" alt="Zoomed Image">
+</div>
+
+<script>
+// State Management
+let currentModel = 'gateway-opus-5';
+let autoRenewOn = true;
+let autoScrollEnabled = true;
+let webSearchOn = false;
+let imageModeOn = false;
+let currentImageModel = 'nano-banana-2';
+let currentAspectRatio = '16:9';
+let pendingAttachments = [];
+let modelsData = null;
+let activeConvId = null;
+let editingConvId = null;
+let conversationsData = [];
+let currentHistory = [];
+let isGenerating = false;
+let currentAbortController = null;
+let currentPartialText = '';
+let currentGeneratedImages = [];
+
+// DOM Elements
+const setupOverlay = document.getElementById('setupOverlay');
+const passwordInput = document.getElementById('passwordInput');
+const setupError = document.getElementById('setupError');
+const loginBtn = document.getElementById('loginBtn');
+
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const newChatBtn = document.getElementById('newChatBtn');
+const convList = document.getElementById('convList');
+const accountEmailText = document.getElementById('accountEmailText');
+const resetAccountBtn = document.getElementById('resetAccountBtn');
+const autoRenewSwitch = document.getElementById('autoRenewSwitch');
+const autoScrollSwitch = document.getElementById('autoScrollSwitch');
+const activeConvTitle = document.getElementById('activeConvTitle');
+const messagesContainer = document.getElementById('messagesContainer');
+const messagesInner = document.getElementById('messagesInner');
+const emptyState = document.getElementById('emptyState');
+const scrollBottomBtn = document.getElementById('scrollBottomBtn');
+const userInput = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const fileInput = document.getElementById('fileInput');
+const uploadFileBtn = document.getElementById('uploadFileBtn');
+const attachmentsBar = document.getElementById('attachmentsBar');
+const activeModeBanner = document.getElementById('activeModeBanner');
+const activeModeBannerText = document.getElementById('activeModeBannerText');
+
+// Topbar Export Menu Elements
+const downloadMenuBtn = document.getElementById('downloadMenuBtn');
+const downloadMenu = document.getElementById('downloadMenu');
+const downloadMdBtn = document.getElementById('downloadMdBtn');
+const downloadTxtBtn = document.getElementById('downloadTxtBtn');
+const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+const toastWrap = document.getElementById('toastWrap');
+
+// Tool Controls
+const modelPickerBtn = document.getElementById('modelPickerBtn');
+const selectedModelLabel = document.getElementById('selectedModelLabel');
+const modelPopover = document.getElementById('modelPopover');
+const modelSearchInput = document.getElementById('modelSearchInput');
+const modelListContainer = document.getElementById('modelListContainer');
+
+const webSearchToggleBtn = document.getElementById('webSearchToggleBtn');
+const imageModeToggleBtn = document.getElementById('imageModeToggleBtn');
+
+const imgModelPickerWrapper = document.getElementById('imgModelPickerWrapper');
+const imgModelPickerBtn = document.getElementById('imgModelPickerBtn');
+const selectedImgModelLabel = document.getElementById('selectedImgModelLabel');
+const imgModelPopover = document.getElementById('imgModelPopover');
+const imgModelListContainer = document.getElementById('imgModelListContainer');
+
+const aspectPickerWrapper = document.getElementById('aspectPickerWrapper');
+const aspectPickerBtn = document.getElementById('aspectPickerBtn');
+const selectedAspectLabel = document.getElementById('selectedAspectLabel');
+const aspectPopover = document.getElementById('aspectPopover');
+const aspectListContainer = document.getElementById('aspectListContainer');
+
+// Lightbox
+const lightboxModal = document.getElementById('lightboxModal');
+const lightboxImg = document.getElementById('lightboxImg');
+const lightboxClose = document.getElementById('lightboxClose');
+
+// Toast Notification System
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// Configure marked
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true
+});
+
+// Initialize App
+async function init() {
+  setupEventListeners();
+  await checkStatus();
+}
+
+async function checkStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    if (!data.initialized) {
+      setupOverlay.style.display = 'flex';
+      return;
+    }
+    setupOverlay.style.display = 'none';
+    accountEmailText.textContent = data.email || 'UseAI Hesabı';
+    currentModel = data.model || 'gateway-opus-5';
+    autoRenewOn = data.auto_renew !== undefined ? data.auto_renew : true;
+    autoRenewSwitch.checked = autoRenewOn;
+
+    webSearchOn = data.web_search || false;
+    imageModeOn = data.image_mode || false;
+    currentImageModel = data.image_model_id || 'nano-banana-2';
+    currentAspectRatio = data.aspect_ratio || '16:9';
+
+    await loadModels();
+    await loadConversations();
+    updateToolPillStates();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const passVal = passwordInput.value.trim();
+  if (!passVal) return;
+
+  loginBtn.disabled = true;
+  setupError.textContent = '';
+
+  try {
+    const res = await fetch('/api/init', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ password: passVal })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      setupOverlay.style.display = 'none';
+      await checkStatus();
+      toast('Giriş başarılı!', 'success');
+    } else {
+      setupError.textContent = data.error || 'Hatalı şifre!';
+    }
+  } catch (err) {
+    setupError.textContent = 'Bağlantı hatası oluştu.';
+  } finally {
+    loginBtn.disabled = false;
+  }
+}
+
+async function loadModels() {
+  try {
+    const res = await fetch('/api/models');
+    modelsData = await res.json();
+    renderModelList();
+    renderImgModelList();
+    renderAspectList();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function updateToolPillStates() {
+  if (modelsData && modelsData.models) {
+    const m = modelsData.models.find(x => x.id === currentModel);
+    if (m) selectedModelLabel.textContent = m.name;
+  }
+
+  if (webSearchOn) {
+    webSearchToggleBtn.classList.add('active');
+  } else {
+    webSearchToggleBtn.classList.remove('active');
+  }
+
+  if (imageModeOn) {
+    imageModeToggleBtn.classList.add('active');
+    imgModelPickerWrapper.style.display = 'block';
+    aspectPickerWrapper.style.display = 'block';
+    activeModeBanner.className = 'active-mode-banner image-mode';
+    activeModeBannerText.textContent = `🖼️ Görsel Üretim Modu:`;
+  } else if (webSearchOn) {
+    imageModeToggleBtn.classList.remove('active');
+    imgModelPickerWrapper.style.display = 'none';
+    aspectPickerWrapper.style.display = 'none';
+    activeModeBanner.className = 'active-mode-banner web-mode';
+    activeModeBannerText.textContent = '🌐 Canlı Web Araması Aktif';
+  } else {
+    imageModeToggleBtn.classList.remove('active');
+    imgModelPickerWrapper.style.display = 'none';
+    aspectPickerWrapper.style.display = 'none';
+    activeModeBanner.className = 'active-mode-banner';
+  }
+}
+
+function renderModelList(filter = '') {
+  if (!modelsData || !modelsData.categories) return;
+  modelListContainer.innerHTML = '';
+
+  for (const [cat, items] of Object.entries(modelsData.categories)) {
+    const matchingItems = Object.entries(items).filter(([name, mid]) => 
+      name.toLowerCase().includes(filter.toLowerCase()) || mid.toLowerCase().includes(filter.toLowerCase())
+    );
+
+    if (matchingItems.length === 0) continue;
+
+    const catHeader = document.createElement('div');
+    catHeader.className = 'popover-header';
+    catHeader.textContent = cat;
+    modelListContainer.appendChild(catHeader);
+
+    matchingItems.forEach(([name, mid]) => {
+      const item = document.createElement('div');
+      item.className = `popover-item ${mid === currentModel ? 'selected' : ''}`;
+      item.textContent = name;
+      item.onclick = async () => {
+        currentModel = mid;
+        selectedModelLabel.textContent = name;
+        modelPopover.classList.remove('open');
+        await syncSettings();
+      };
+      modelListContainer.appendChild(item);
+    });
+  }
+}
+
+function renderImgModelList() {
+  if (!modelsData || !modelsData.image_models) return;
+  imgModelListContainer.innerHTML = '';
+  modelsData.image_models.forEach(m => {
+    const item = document.createElement('div');
+    item.className = `popover-item ${m.id === currentImageModel ? 'selected' : ''}`;
+    item.textContent = m.label;
+    item.onclick = async () => {
+      currentImageModel = m.id;
+      selectedImgModelLabel.textContent = m.label;
+      imgModelPopover.classList.remove('open');
+      await syncSettings();
+    };
+    imgModelListContainer.appendChild(item);
+  });
+}
+
+function renderAspectList() {
+  if (!modelsData || !modelsData.aspect_ratios) return;
+  aspectListContainer.innerHTML = '';
+  modelsData.aspect_ratios.forEach(ar => {
+    const item = document.createElement('div');
+    item.className = `popover-item ${ar.value === currentAspectRatio ? 'selected' : ''}`;
+    item.textContent = ar.label;
+    item.onclick = async () => {
+      currentAspectRatio = ar.value;
+      selectedAspectLabel.textContent = ar.value;
+      aspectPopover.classList.remove('open');
+      await syncSettings();
+    };
+    aspectListContainer.appendChild(item);
+  });
+}
+
+async function syncSettings() {
+  updateToolPillStates();
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({
+        model: currentModel,
+        auto_renew: autoRenewOn,
+        web_search: webSearchOn,
+        image_mode: imageModeOn,
+        image_model_id: currentImageModel,
+        aspect_ratio: currentAspectRatio,
+      })
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// Conversation History & Rename Logic
+async function loadConversations() {
+  try {
+    const res = await fetch('/api/conversations');
+    const data = await res.json();
+    conversationsData = data.conversations || [];
+    renderConversations(conversationsData);
+    updateActiveConvTitle();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function updateActiveConvTitle() {
+  if (activeConvId) {
+    const activeConv = conversationsData.find(c => c.conv_id === activeConvId);
+    if (activeConv) {
+      activeConvTitle.textContent = activeConv.title;
+    }
+  }
+}
+
+function renderConversations(list) {
+  convList.innerHTML = '';
+  if (list.length === 0) {
+    convList.innerHTML = '<div class="conv-empty">Henüz sohbet yok.</div>';
+    return;
+  }
+
+  list.forEach(c => {
+    const item = document.createElement('div');
+    item.className = `conv-item ${c.conv_id === activeConvId ? 'active' : ''}`;
+    
+    if (editingConvId === c.conv_id) {
+      item.innerHTML = `
+        <input type="text" class="conv-title-input" id="editTitleInput_${c.conv_id}" value="${escapeHtml(c.title)}">
+        <button class="conv-action-btn save-title" title="Kaydet"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+        <button class="conv-action-btn cancel-title" title="İptal"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      `;
+      setTimeout(() => {
+        const inp = document.getElementById(`editTitleInput_${c.conv_id}`);
+        if (inp) {
+          inp.focus();
+          inp.onkeydown = (ev) => {
+            if (ev.key === 'Enter') saveRename(c.conv_id, inp.value);
+            if (ev.key === 'Escape') { editingConvId = null; renderConversations(list); }
+          };
+        }
+      }, 50);
+    } else {
+      item.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="conv-item-title">${escapeHtml(c.title)}</span>
+        <div class="conv-item-actions">
+          <button class="conv-action-btn edit-title" title="İsim Düzenle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+          <button class="conv-action-btn delete" title="Sil"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+      `;
+    }
+
+    item.onclick = (e) => {
+      if (e.target.closest('.delete')) {
+        deleteConv(c.conv_id);
+        return;
+      }
+      if (e.target.closest('.edit-title')) {
+        editingConvId = c.conv_id;
+        renderConversations(list);
+        return;
+      }
+      if (e.target.closest('.save-title')) {
+        const inp = document.getElementById(`editTitleInput_${c.conv_id}`);
+        if (inp) saveRename(c.conv_id, inp.value);
+        return;
+      }
+      if (e.target.closest('.cancel-title')) {
+        editingConvId = null;
+        renderConversations(list);
+        return;
+      }
+      if (editingConvId !== c.conv_id) {
+        loadConv(c.conv_id, c.title);
+      }
+    };
+    convList.appendChild(item);
+  });
+}
+
+async function saveRename(conv_id, newTitle) {
+  newTitle = newTitle.trim();
+  if (!newTitle) return;
+  try {
+    const res = await fetch('/api/conversation/rename', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ conv_id: conv_id, title: newTitle })
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (activeConvId === conv_id) {
+        activeConvTitle.textContent = data.title;
+      }
+      editingConvId = null;
+      await loadConversations();
+      toast('Sohbet adı yenilendi', 'success');
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function loadConv(id, title) {
+  try {
+    const res = await fetch('/api/conversation/load', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({conv_id: id})
+    });
+    const data = await res.json();
+    if (data.success) {
+      activeConvId = id;
+      activeConvTitle.textContent = title;
+      currentHistory = data.history || [];
+      renderHistoryMessages(currentHistory);
+      await loadConversations();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function deleteConv(id) {
+  try {
+    await fetch('/api/conversation/delete', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({conv_id: id})
+    });
+    if (activeConvId === id) {
+      activeConvId = null;
+      activeConvTitle.textContent = 'Yeni Sohbet';
+      clearMessages();
+    }
+    await loadConversations();
+    toast('Sohbet silindi');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function clearMessages() {
+  messagesInner.innerHTML = '';
+  messagesInner.appendChild(emptyState);
+  currentHistory = [];
+}
+
+function renderHistoryMessages(history) {
+  messagesInner.innerHTML = '';
+  if (!history || history.length === 0) {
+    messagesInner.appendChild(emptyState);
+    return;
+  }
+
+  history.forEach(turn => {
+    appendMessage(turn.role, turn.text, turn.images, turn.attachments);
+  });
+  if (autoScrollEnabled) scrollToBottom();
+}
+
+// Add Copy Buttons & Code Header Bar to Markdown <pre>
+function addCopyButtons(container) {
+  container.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector('.code-header-bar')) return;
+
+    const codeEl = pre.querySelector('code');
+    let lang = 'code';
+    if (codeEl) {
+      const cls = Array.from(codeEl.classList).find(c => c.startsWith('language-'));
+      if (cls) lang = cls.replace('language-', '');
+    }
+
+    const headerBar = document.createElement('div');
+    headerBar.className = 'code-header-bar';
+    headerBar.innerHTML = `
+      <div class="code-header-lang">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18L22 12L16 6M8 6L2 12L8 18"/></svg>
+        <span>${escapeHtml(lang)}</span>
+      </div>
+      <button class="code-copy-btn">Kopyala</button>
+    `;
+
+    const copyBtn = headerBar.querySelector('.code-copy-btn');
+    copyBtn.onclick = () => {
+      const codeText = codeEl?.innerText || pre.innerText || '';
+      navigator.clipboard.writeText(codeText);
+      copyBtn.textContent = 'Kopyalandı!';
+      toast('Kod panoya kopyalandı', 'success');
+      setTimeout(() => copyBtn.textContent = 'Kopyala', 2000);
+    };
+
+    pre.insertBefore(headerBar, pre.firstChild);
+  });
+}
+
+function appendMessage(role, text, images = null, attachments = null) {
+  emptyState.remove();
+
+  const msgItem = document.createElement('div');
+  msgItem.className = `msg-item ${role}`;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = role === 'user' ? 'U' : 'AI';
+
+  const content = document.createElement('div');
+  content.className = 'msg-content';
+
+  const sender = document.createElement('div');
+  sender.className = 'msg-sender';
+  sender.textContent = role === 'user' ? 'Siz' : 'UseAI Assistant';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  if (text) {
+    bubble.innerHTML = role === 'user' ? escapeHtml(text).replace(/\n/g, '<br>') : marked.parse(text);
+  }
+
+  content.appendChild(sender);
+
+  if (attachments && attachments.length > 0) {
+    const attsDiv = document.createElement('div');
+    attsDiv.className = 'attachments-bar';
+    attachments.forEach(a => {
+      attsDiv.innerHTML += `<div class="att-chip">📄 ${escapeHtml(a.filename)}</div>`;
+    });
+    content.appendChild(attsDiv);
+  }
+
+  content.appendChild(bubble);
+
+  // Use in Prompt Button (Prompt'a Aktar) on hover
+  const useBtn = document.createElement('button');
+  useBtn.className = 'msg-use-btn';
+  useBtn.innerHTML = '↙ Prompt\'a Aktar';
+  useBtn.title = 'Bu mesajı istem kutusuna yaz';
+  useBtn.onclick = () => {
+    userInput.value = text;
+    userInput.style.height = 'auto';
+    userInput.style.height = userInput.scrollHeight + 'px';
+    userInput.focus();
+    toast('Prompt kutusuna aktarıldı', 'success');
+  };
+  content.appendChild(useBtn);
+
+  if (images && images.length > 0) {
+    const grid = document.createElement('div');
+    grid.className = 'msg-image-grid';
+    images.forEach(url => {
+      const card = document.createElement('div');
+      card.className = 'img-card';
+      card.innerHTML = `
+        <img src="${url}" alt="Generated Image" loading="lazy">
+        <div class="img-overlay-actions">
+          <a href="${url}" target="_blank" download="useai_image_${Date.now()}.png" class="img-btn">📥 İndir</a>
+          <button class="img-btn zoom-btn">🔍 Büyüt</button>
+        </div>
+      `;
+      card.querySelector('.zoom-btn').onclick = () => openLightbox(url);
+      grid.appendChild(card);
+    });
+    content.appendChild(grid);
+  }
+
+  msgItem.appendChild(avatar);
+  msgItem.appendChild(content);
+  messagesInner.appendChild(msgItem);
+
+  addCopyButtons(msgItem);
+  if (autoScrollEnabled) scrollToBottom();
+  return { bubble, content, msgItem };
+}
+
+// STOP GENERATION CONTROLLER (WITH ZERO DATA LOSS & EXACT LAST CHARACTER INTEGRITY)
+function setGeneratingState(generating) {
+  isGenerating = generating;
+  if (generating) {
+    sendBtn.classList.add('stop-btn');
+    sendBtn.title = 'Yanıtı Durdur';
+    sendBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
+  } else {
+    sendBtn.classList.remove('stop-btn');
+    sendBtn.title = 'Gönder';
+    sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+  }
+}
+
+async function stopGeneration() {
+  if (currentAbortController) {
+    currentAbortController.abort();
+    currentAbortController = null;
+  }
+  setGeneratingState(false);
+
+  // SAVE EXACT LAST CHARACTER TO SERVER (NO DATA LOSS!)
+  if (currentPartialText || currentGeneratedImages.length > 0) {
+    try {
+      await fetch('/api/stop', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({
+          partial_text: currentPartialText,
+          generated_images: currentGeneratedImages,
+        })
+      });
+      await loadConversations();
+      toast('Yanıt üretimi durduruldu ve kaydedildi', 'warn');
+    } catch (e) {
+      console.error('Stop save error:', e);
+    }
+  }
+}
+
+// Export Chat (Download full conversation history as Markdown, TXT, or JSON)
+function exportChat(format) {
+  if (!currentHistory || currentHistory.length === 0) {
+    toast('İndirilecek mesaj yok', 'error');
+    return;
+  }
+
+  let content = '';
+  let mimeType = 'text/plain;charset=utf-8';
+  let ext = 'txt';
+
+  const title = activeConvTitle.textContent || 'UseAI_Sohbet';
+
+  if (format === 'md') {
+    ext = 'md';
+    mimeType = 'text/markdown;charset=utf-8';
+    content = `# ${title}\n\n`;
+    currentHistory.forEach(turn => {
+      const roleName = turn.role === 'user' ? 'Kullanıcı' : 'UseAI Assistant';
+      content += `### ${roleName}\n${turn.text || ''}\n\n`;
+    });
+  } else if (format === 'txt') {
+    ext = 'txt';
+    content = `=== ${title} ===\n\n`;
+    currentHistory.forEach(turn => {
+      const roleName = turn.role === 'user' ? 'KULLANICI' : 'USEAI ASSISTANT';
+      content += `[${roleName}]\n${turn.text || ''}\n\n------------------------\n\n`;
+    });
+  } else if (format === 'json') {
+    ext = 'json';
+    mimeType = 'application/json;charset=utf-8';
+    content = JSON.stringify({ title: title, history: currentHistory }, null, 2);
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-zA-Z0-9_\-]/g, '_')}_${Date.now()}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+  downloadMenu.classList.remove('open');
+  toast(`Sohbet .${ext} olarak indirildi`, 'success');
+}
+
+// Streaming Send Logic
+async function sendMessage(customText = null, customAttachments = null) {
+  if (isGenerating) {
+    await stopGeneration();
+    return;
+  }
+
+  const text = customText !== null ? customText : userInput.value.trim();
+  const attsToSend = customAttachments !== null ? customAttachments : [...pendingAttachments];
+
+  if (!text && attsToSend.length === 0) return;
+
+  if (customText === null) {
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    pendingAttachments = [];
+    renderPendingAttachments();
+  }
+
+  lastSentText = text;
+  lastSentAttachments = attsToSend;
+  currentPartialText = '';
+  currentGeneratedImages = [];
+
+  appendMessage('user', text, null, attsToSend);
+  const { bubble, content } = appendMessage('assistant', '');
+  
+  const statusBadge = document.createElement('div');
+  statusBadge.className = 'status-badge';
+  statusBadge.innerHTML = '<div class="pulse-spinner"></div> Yanıt hazırlanıyor...';
+  content.appendChild(statusBadge);
+
+  currentAbortController = new AbortController();
+  setGeneratingState(true);
+
+  try {
+    const res = await fetch('/api/send', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({
+        message: text,
+        attachments: attsToSend,
+      }),
+      signal: currentAbortController.signal
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let sseBuffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      sseBuffer += decoder.decode(value, { stream: true });
+
+      let boundary;
+      while ((boundary = sseBuffer.indexOf('\n\n')) !== -1) {
+        const eventBlock = sseBuffer.slice(0, boundary);
+        sseBuffer = sseBuffer.slice(boundary + 2);
+
+        const lines = eventBlock.split('\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'conv_id') {
+              activeConvId = data.conv_id;
+              loadConversations();
+            } else if (data.type === 'chunk') {
+              if (statusBadge && statusBadge.parentNode) {
+                statusBadge.remove();
+              }
+              currentPartialText += data.content;
+              bubble.innerHTML = marked.parse(currentPartialText);
+              addCopyButtons(bubble);
+              if (autoScrollEnabled) scrollToBottom();
+            } else if (data.type === 'status') {
+              statusBadge.innerHTML = '<div class="pulse-spinner"></div> ' + escapeHtml(data.content);
+            } else if (data.type === 'image') {
+              if (statusBadge && statusBadge.parentNode) {
+                statusBadge.remove();
+              }
+              if (!imageGrid) {
+                imageGrid = document.createElement('div');
+                imageGrid.className = 'msg-image-grid';
+                content.appendChild(imageGrid);
+              }
+              currentGeneratedImages.push(data.url);
+              const card = document.createElement('div');
+              card.className = 'img-card';
+              card.innerHTML = '<img src="' + data.url + '" alt="Generated Image"><div class="img-overlay-actions"><a href="' + data.url + '" target="_blank" download="useai_image_' + Date.now() + '.png" class="img-btn">📥 İndir</a><button class="img-btn zoom-btn">🔍 Büyüt</button></div>';
+              card.querySelector('.zoom-btn').onclick = function() { openLightbox(data.url); };
+              imageGrid.appendChild(card);
+              if (autoScrollEnabled) scrollToBottom();
+            } else if (data.type === 'rate_limit_ask') {
+              if (statusBadge && statusBadge.parentNode) {
+                statusBadge.remove();
+              }
+              const askCard = document.createElement('div');
+              askCard.className = 'rate-limit-card';
+              askCard.innerHTML = `
+                <div class="rate-limit-title">⚠️ Kullanım Limiti Doldu</div>
+                <p>Mevcut hesabın kullanım limiti doldu. Yeni bir geçici hesap açıp sohbet geçmişinizle devam etmek ister misiniz?</p>
+                <div class="rate-limit-actions">
+                  <button class="btn-renew-yes" id="renewYesBtn">Evet, Yeni Hesap Aç ve Devam Et</button>
+                  <button class="btn-renew-no" id="renewNoBtn">İptal</button>
+                </div>
+              `;
+              bubble.appendChild(askCard);
+
+              askCard.querySelector('#renewYesBtn').onclick = async () => {
+                askCard.remove();
+                await handleManualAccountRenewAndRetry(text, attsToSend);
+              };
+              askCard.querySelector('#renewNoBtn').onclick = () => {
+                askCard.remove();
+              };
+            } else if (data.type === 'done') {
+              if (statusBadge && statusBadge.parentNode) {
+                statusBadge.remove();
+              }
+              loadConversations().then(function() {
+                updateActiveConvTitle();
+              });
+            }
+          } catch (parseErr) {}
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      if (statusBadge && statusBadge.parentNode) statusBadge.remove();
+      const stopNotice = document.createElement('div');
+      stopNotice.style.fontSize = '12px';
+      stopNotice.style.color = 'var(--warn)';
+      stopNotice.style.marginTop = '8px';
+      stopNotice.textContent = '⏹️ Yanıt üretimi kullanıcı tarafından durduruldu.';
+      content.appendChild(stopNotice);
+    } else {
+      statusBadge.innerHTML = '<span style="color:var(--error)">⚠️ Hata: ' + e.message + '</span>';
+    }
+  } finally {
+    setGeneratingState(false);
+    currentAbortController = null;
+    await loadConversations();
+    updateActiveConvTitle();
+    if (autoScrollEnabled) scrollToBottom();
+  }
+}
+
+async function handleManualAccountRenewAndRetry(msgText, msgAtts) {
+  resetAccountBtn.classList.add('spinning');
+  try {
+    await fetch('/api/reset', { method: 'POST' });
+    await checkStatus();
+    toast('Geçici yeni hesap tanımlandı!', 'success');
+    await sendMessage(msgText, msgAtts || []);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    resetAccountBtn.classList.remove('spinning');
+  }
+}
+
+// Attachments
+uploadFileBtn.onclick = () => fileInput.click();
+fileInput.onchange = async () => {
+  const files = Array.from(fileInput.files);
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success) {
+        pendingAttachments.push(data.attachment);
+        renderPendingAttachments();
+        toast('Dosya yüklendi', 'success');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  fileInput.value = '';
+};
+
+function renderPendingAttachments() {
+  attachmentsBar.innerHTML = '';
+  pendingAttachments.forEach((att, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'att-chip';
+    chip.innerHTML = `
+      📄 ${escapeHtml(att.filename)}
+      <button class="att-chip-remove">&times;</button>
+    `;
+    chip.querySelector('button').onclick = () => {
+      pendingAttachments.splice(idx, 1);
+      renderPendingAttachments();
+    };
+    attachmentsBar.appendChild(chip);
+  });
+}
+
+// Lightbox with outside click close
+function openLightbox(url) {
+  lightboxImg.src = url;
+  lightboxModal.classList.add('open');
+}
+lightboxModal.onclick = (e) => {
+  if (e.target === lightboxModal || e.target === lightboxClose) {
+    lightboxModal.classList.remove('open');
+  }
+};
+
+// Horizontally Centered Scroll-to-bottom arrow logic
+function scrollToBottom() {
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+messagesContainer.onscroll = () => {
+  const distFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+  if (distFromBottom > 80) {
+    scrollBottomBtn.classList.add('show');
+  } else {
+    scrollBottomBtn.classList.remove('show');
+  }
+};
+scrollBottomBtn.onclick = () => {
+  scrollToBottom();
+};
+
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function setupEventListeners() {
+  hamburgerBtn.onclick = () => {
+    sidebar.classList.toggle('open');
+    sidebarBackdrop.classList.toggle('open');
+  };
+
+  sidebarBackdrop.onclick = () => {
+    sidebar.classList.remove('open');
+    sidebarBackdrop.classList.remove('open');
+  };
+
+  themeToggleBtn.onclick = () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
+  newChatBtn.onclick = async () => {
+    if (isGenerating) await stopGeneration();
+    await fetch('/api/new_chat', { method: 'POST' });
+    activeConvId = null;
+    activeConvTitle.textContent = 'Yeni Sohbet';
+    clearMessages();
+    await loadConversations();
+    toast('Yeni sohbet başlatıldı');
+
+    if (window.innerWidth <= 768) {
+      sidebar.classList.remove('open');
+      sidebarBackdrop.classList.remove('open');
+    }
+  };
+
+  resetAccountBtn.onclick = async () => {
+    resetAccountBtn.classList.add('spinning');
+    try {
+      await fetch('/api/reset', { method: 'POST' });
+      await checkStatus();
+      toast('Yeni hesap açıldı!', 'success');
+    } finally {
+      resetAccountBtn.classList.remove('spinning');
+    }
+  };
+
+  autoRenewSwitch.onchange = async () => {
+    autoRenewOn = autoRenewSwitch.checked;
+    await syncSettings();
+  };
+
+  autoScrollSwitch.onchange = () => {
+    autoScrollEnabled = autoScrollSwitch.checked;
+  };
+
+  // Topbar Export Chat Menu
+  downloadMenuBtn.onclick = (e) => {
+    e.stopPropagation();
+    downloadMenu.classList.toggle('open');
+  };
+
+  downloadMdBtn.onclick = () => exportChat('md');
+  downloadTxtBtn.onclick = () => exportChat('txt');
+  downloadJsonBtn.onclick = () => exportChat('json');
+
+  userInput.oninput = () => {
+    userInput.style.height = 'auto';
+    userInput.style.height = userInput.scrollHeight + 'px';
+  };
+  userInput.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+  sendBtn.onclick = () => sendMessage();
+
+  modelPickerBtn.onclick = (e) => {
+    e.stopPropagation();
+    modelPopover.classList.toggle('open');
+    imgModelPopover.classList.remove('open');
+    aspectPopover.classList.remove('open');
+    downloadMenu.classList.remove('open');
+  };
+  imgModelPickerBtn.onclick = (e) => {
+    e.stopPropagation();
+    imgModelPopover.classList.toggle('open');
+    modelPopover.classList.remove('open');
+    aspectPopover.classList.remove('open');
+    downloadMenu.classList.remove('open');
+  };
+  aspectPickerBtn.onclick = (e) => {
+    e.stopPropagation();
+    aspectPopover.classList.toggle('open');
+    modelPopover.classList.remove('open');
+    imgModelPopover.classList.remove('open');
+    downloadMenu.classList.remove('open');
+  };
+
+  document.onclick = () => {
+    modelPopover.classList.remove('open');
+    imgModelPopover.classList.remove('open');
+    aspectPopover.classList.remove('open');
+    downloadMenu.classList.remove('open');
+  };
+
+  modelSearchInput.oninput = (e) => {
+    renderModelList(e.target.value);
+  };
+
+  webSearchToggleBtn.onclick = async () => {
+    webSearchOn = !webSearchOn;
+    if (webSearchOn) imageModeOn = false;
+    await syncSettings();
+  };
+
+  imageModeToggleBtn.onclick = async () => {
+    imageModeOn = !imageModeOn;
+    if (imageModeOn) webSearchOn = false;
+    await syncSettings();
+  };
+}
+
+init();
+</script>
+</body>
+</html>
