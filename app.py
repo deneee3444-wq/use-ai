@@ -15,6 +15,8 @@ from flask import Flask, render_template, request, jsonify, Response, make_respo
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+# debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
+app.config['PROPAGATE_EXCEPTIONS'] = False
 
 # ===================== CONSTANTS =====================
 API_BASE = "https://api.use.ai"
@@ -26,6 +28,11 @@ REFERER = "https://use.ai/"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
 APP_PASSWORD = "123"
+
+# Akış davranışı
+IDLE_TIMEOUT = 90.0      # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
+PING_INTERVAL = 15.0     # SSE keepalive aralığı
+WS_CONNECT_TIMEOUT = 25  # handshake timeout
 
 # ---------- MODEL KATALOĞU (chat) ----------
 MODELS = {
@@ -243,6 +250,11 @@ class UseAIClient:
         )
         r.raise_for_status()
 
+    def refresh_auth(self):
+        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
+        self.get_session()
+        self.app_attestation()
+
     def bootstrap(self, model: str = DEFAULT_MODEL):
         self.email_login()
         self.sign_in()
@@ -314,40 +326,58 @@ def normalize_client_history(raw_history):
 def make_local_conv_id():
     return 'conv_' + uuid.uuid4().hex[:12]
 
+def _derive_title(history):
+    title = "Konuşma"
+    for turn in history:
+        if turn.get('role') == 'user':
+            content = turn.get('content')
+            if isinstance(content, list):
+                title = next((i.get('text', '') for i in content if i.get('type') == 'text'), 'Konuşma')
+            else:
+                title = str(content or 'Konuşma')
+            title = (title[:48] + '…') if len(title) > 48 else title
+            break
+    return title or "Konuşma"
+
+def set_turn_content(turn, text, image_urls=None):
+    """Asistan turunu YERİNDE günceller. Aynı dict nesnesi geçmişte durduğu için
+    bu çağrı anında hem sess['history']'ye hem konuşma kaydına yansır."""
+    if image_urls:
+        content = [{"type": "image_url", "image_url": {"url": u}} for u in image_urls]
+        if text:
+            content.append({"type": "text", "text": text})
+        turn['content'] = content
+    else:
+        turn['content'] = text
+
 def save_conv_to_history(sess):
-    history = sess.get('history', [])
+    """Aktif konuşmayı kalıcı listeye BAĞLAR.
+    KRİTİK: kopya değil REFERANS saklanır — sess['history'] ile konuşma kaydı
+    aynı liste nesnesidir, böylece akış sırasındaki her mutasyon anında görünür.
+    """
+    history = sess.get('history')
     if not history:
         return
 
-    def derive_title():
-        title = "Konuşma"
-        for turn in history:
-            if turn['role'] == 'user':
-                content = turn['content']
-                if isinstance(content, list):
-                    title = next((i['text'] for i in content if i.get('type') == 'text'), 'Konuşma')
-                else:
-                    title = str(content)
-                title = (title[:48] + '…') if len(title) > 48 else title
-                break
-        return title
-
     convs = sess.setdefault('conversations', [])
-    local_id  = sess.get('active_local_conv_id')
+    local_id = sess.get('active_local_conv_id')
 
-    if local_id:
-        for c in convs:
-            if c.get('conv_id') == local_id:
-                if not c.get('title_locked'):
-                    c['title'] = derive_title()
-                c['history'] = history[:]
-                return
-        convs.insert(0, {'conv_id': local_id, 'title': derive_title(), 'history': history[:]})
-    else:
-        new_id = make_local_conv_id()
-        sess['active_local_conv_id'] = new_id
-        convs.insert(0, {'conv_id': new_id, 'title': derive_title(), 'history': history[:]})
+    if not local_id:
+        local_id = make_local_conv_id()
+        sess['active_local_conv_id'] = local_id
 
+    for c in convs:
+        if c.get('conv_id') == local_id:
+            c['history'] = history           # referans
+            if not c.get('title_locked'):
+                c['title'] = _derive_title(history)
+            return
+
+    convs.insert(0, {
+        'conv_id': local_id,
+        'title': _derive_title(history),
+        'history': history,                  # referans
+    })
     sess['conversations'] = convs[:30]
 
 def _switch_to_conv(sess, conv_id):
@@ -355,22 +385,20 @@ def _switch_to_conv(sess, conv_id):
     for c in convs:
         if c.get('conv_id') == conv_id:
             save_conv_to_history(sess)
-            history = c['history'][:]
-            
+
             client = sess.get('client')
             if client:
                 client.messages = []
                 client.chat_id = str(uuid.uuid4())
 
-            sess['history'] = history
+            sess['history'] = c['history']            # referans — kopya DEĞİL
             sess['active_local_conv_id'] = conv_id
-            return True, conv_id, len(history) // 2
+            return True, conv_id, len(c['history']) // 2
     return False, None, 0
 
 # ===================== CHAT STREAM =====================
-def stream_message(client, text_message, attachments, web_search, image_mode, image_model_id, aspect_ratio, sess):
-    agent_room = str(uuid.uuid4())
-    url = (
+def _build_ws_url(client, agent_room):
+    return (
         f"{WS_BASE}/agents/budget-agent/{agent_room}"
         f"?token={client.jwt}"
         f"&app_token={client.app_token}"
@@ -380,6 +408,11 @@ def stream_message(client, text_message, attachments, web_search, image_mode, im
         f"&planType=free"
         f"&isTestUser=false"
     )
+
+def stream_message(client, text_message, attachments, web_search, image_mode,
+                   image_model_id, aspect_ratio, sess,
+                   on_delta=None, on_images=None):
+    agent_room = str(uuid.uuid4())
 
     user_msg_id = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 
@@ -419,12 +452,43 @@ def stream_message(client, text_message, attachments, web_search, image_mode, im
         msg_metadata["imageCount"] = IMAGE_COUNT
         msg_metadata["source"] = "image_funnel"
 
-    client.messages.append({
+    user_message = {
         "id": user_msg_id,
         "role": "user",
         "parts": parts,
         "metadata": msg_metadata,
-    })
+    }
+
+    # ---- BAĞLANTI (generator içinde; hata artık HTML 500 değil SSE event'i) ----
+    ws = None
+    connect_err = None
+    for attempt in range(2):
+        try:
+            ws = websocket.create_connection(
+                _build_ws_url(client, agent_room),
+                origin=ORIGIN,
+                header=[f"User-Agent: {UA}"],
+                timeout=WS_CONNECT_TIMEOUT,
+            )
+            break
+        except Exception as e:
+            connect_err = e
+            ws = None
+            if attempt == 0:
+                # Muhtemelen bayat jwt/app_token — tazeleyip bir kez daha dene
+                try:
+                    client.refresh_auth()
+                except Exception:
+                    pass
+                time.sleep(0.4)
+
+    if ws is None:
+        yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
+        return
+
+    # Bağlantı kurulduktan SONRA mesajı kuyruğa ekle (başarısız denemede
+    # client.messages kirlenmesin)
+    client.messages.append(user_message)
 
     source = "image_funnel" if image_mode else ("websearch" if web_search else "chat_page")
 
@@ -464,91 +528,124 @@ def stream_message(client, text_message, attachments, web_search, image_mode, im
         payload["imageGenerationRatio"] = aspect_ratio
         payload["imageGenerationStyle"] = IMAGE_STYLE
 
-    ws = websocket.create_connection(url, origin=ORIGIN, header=[f"User-Agent: {UA}"])
     sess['active_ws'] = ws
     ws.settimeout(0.5)
 
     assistant_text = ""
     assistant_id = ""
     image_parts = []
+    image_urls = []
     aborted_time = None
     rate_limited = False
+    finished = False          # stream-complete alındı mı
+    fatal_error = None
+    client_gone = False
+    last_data = time.time()
+    last_ping = time.time()
 
     try:
-        ws.send(json.dumps(payload))
-        while True:
-            if sess.get('aborted'):
-                if aborted_time is None:
-                    aborted_time = time.time()
-                elif time.time() - aborted_time > 1.5:
+        try:
+            ws.send(json.dumps(payload))
+
+            while True:
+                if sess.get('aborted'):
+                    if aborted_time is None:
+                        aborted_time = time.time()
+                    elif time.time() - aborted_time > 1.5:
+                        break
+
+                try:
+                    raw = ws.recv()
+                except websocket.WebSocketTimeoutException:
+                    now = time.time()
+                    # >>> SONSUZ DÖNGÜ KIRICI <<<
+                    if now - last_data > IDLE_TIMEOUT:
+                        break
+                    if now - last_ping > PING_INTERVAL and not sess.get('aborted'):
+                        last_ping = now
+                        yield ": keepalive\n\n"
+                    continue
+                except Exception:
                     break
-            try:
-                raw = ws.recv()
-            except websocket.WebSocketTimeoutException:
-                continue
-            except Exception:
-                break
-            
-            if not raw:
-                break
 
-            try:
-                msg = json.loads(raw)
-            except Exception:
-                continue
+                if not raw:
+                    break
 
-            if msg.get("type") == "rate-limit-error":
-                rate_limited = True
-                yield f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
-                break
+                last_data = time.time()
 
-            chunk = msg.get("chunk")
-            if chunk:
-                ct = chunk.get("type", "")
-                if ct == "start":
-                    assistant_id = chunk.get("messageId", "")
-                elif ct == "text-delta":
-                    delta = chunk.get("delta", "")
-                    assistant_text += delta
-                    if not sess.get('aborted'):
-                        yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
-                elif ct.startswith("tool-image-") and chunk.get("state") == "input-available":
-                    inp = chunk.get("input") or {}
-                    shortCopy = inp.get("shortCopy")
-                    if shortCopy and not sess.get('aborted'):
-                        yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
-                elif ct.startswith("tool-image-") and chunk.get("state") == "output-available":
-                    output = chunk.get("output") or {}
-                    imgs = output.get("images") or []
-                    urls = []
-                    for im in imgs:
-                        u = im.get("url")
-                        if u:
-                            urls.append(u)
-                            image_parts.append({
-                                "type": "image",
-                                "url": u,
-                                "mediaType": im.get("mimeType", "image/jpeg"),
-                                "width": im.get("width"),
-                                "height": im.get("height"),
-                            })
-                    if urls and not sess.get('aborted'):
-                        yield f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
-                elif ct == "finish":
-                    pass
+                try:
+                    msg = json.loads(raw)
+                except Exception:
+                    continue
 
-            if msg.get("type") == "stream-complete":
-                yield f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
-                break
-    except Exception as e:
-        if assistant_text:
-            yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
-        else:
-            yield f"data: {json.dumps({'type': 'error', 'code': str(e)})}\n\n"
-    else:
-        if sess.get('aborted'):
-            yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
+                if msg.get("type") == "rate-limit-error":
+                    rate_limited = True
+                    finished = True
+                    yield f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
+                    break
+
+                chunk = msg.get("chunk")
+                if chunk:
+                    ct = chunk.get("type", "")
+                    if ct == "start":
+                        assistant_id = chunk.get("messageId", "")
+
+                    elif ct == "text-delta":
+                        delta = chunk.get("delta", "")
+                        if delta:
+                            assistant_text += delta
+                            # >>> ANLIK KALICI KAYIT: token backend'e girdiği an geçmişte <<<
+                            if on_delta:
+                                on_delta(assistant_text)
+                            if not sess.get('aborted'):
+                                yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
+
+                    elif ct.startswith("tool-image-") and chunk.get("state") == "input-available":
+                        inp = chunk.get("input") or {}
+                        shortCopy = inp.get("shortCopy")
+                        if shortCopy and not sess.get('aborted'):
+                            yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
+
+                    elif ct.startswith("tool-image-") and chunk.get("state") == "output-available":
+                        output = chunk.get("output") or {}
+                        imgs = output.get("images") or []
+                        urls = []
+                        for im in imgs:
+                            u = im.get("url")
+                            if u:
+                                urls.append(u)
+                                image_urls.append(u)
+                                image_parts.append({
+                                    "type": "image",
+                                    "url": u,
+                                    "mediaType": im.get("mimeType", "image/jpeg"),
+                                    "width": im.get("width"),
+                                    "height": im.get("height"),
+                                })
+                        if urls:
+                            # Görseller de anında geçmişe yazılır
+                            if on_images:
+                                on_images(assistant_text, image_urls)
+                            if not sess.get('aborted'):
+                                yield f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
+
+                    elif ct == "finish":
+                        pass
+
+                if msg.get("type") == "stream-complete":
+                    finished = True
+                    yield f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
+                    break
+
+        except GeneratorExit:
+            # İstemci bağlantıyı kapattı — buradan sonra yield YASAK.
+            client_gone = True
+            raise
+        except Exception as e:
+            fatal_error = str(e)
+
     finally:
+        # --- Bu blokta ASLA yield yok: GeneratorExit sırasında da güvenle çalışır ---
         try:
             ws.close()
         except Exception:
@@ -574,7 +671,31 @@ def stream_message(client, text_message, attachments, web_search, image_mode, im
         elif rate_limited and client.messages and client.messages[-1]["role"] == "user":
             client.messages.pop()
 
+        # Son kez senkronize et (idempotent)
+        if on_images:
+            on_images(assistant_text, image_urls)
+        elif on_delta:
+            on_delta(assistant_text)
+
+    # --- GARANTİLİ TERMİNAL EVENT (client hâlâ bağlıysa) ---
+    if client_gone:
+        return
+
+    if not finished and not rate_limited:
+        if assistant_text or image_urls:
+            yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
+        else:
+            code = fatal_error or 'STREAM_CLOSED_EMPTY'
+            yield f"data: {json.dumps({'type': 'error', 'code': code})}\n\n"
+
 # ===================== ROUTES =====================
+@app.errorhandler(Exception)
+def _json_error_handler(e):
+    code = getattr(e, 'code', 500)
+    if not isinstance(code, int):
+        code = 500
+    return jsonify({'error': str(e), 'status': code}), code
+
 @app.route('/')
 def index():
     resp = make_response(render_template('index.html'))
@@ -605,7 +726,6 @@ def api_toggle_feature():
     if not sess:
         return jsonify({'error': 'Oturum yok'}), 401
     data = request.json or {}
-    # Frontend sends {feature:'web_search', value:true} format
     feature = data.get('feature')
     value = data.get('value')
     if feature:
@@ -618,7 +738,6 @@ def api_toggle_feature():
         elif feature == 'aspect_ratio':
             sess['aspect_ratio'] = value
     else:
-        # Direct format fallback
         if 'web_search' in data:
             sess['web_search'] = bool(data['web_search'])
         if 'image_mode' in data:
@@ -683,7 +802,7 @@ def api_send():
         return jsonify({'error': 'Mesaj boş.'}), 400
 
     client = sess['client']
-    
+
     prior_history = sess.get('history', [])
     if prior_history and not client.messages:
         ctx = format_history_context(prior_history)
@@ -692,62 +811,61 @@ def api_send():
         api_message = message
 
     is_new_conv = not sess.get('active_local_conv_id')
+    new_local_conv_id = make_local_conv_id() if is_new_conv else None
     if is_new_conv:
-        new_local_conv_id = make_local_conv_id()
         sess['active_local_conv_id'] = new_local_conv_id
-    else:
-        new_local_conv_id = None
 
     user_content = (
         [{"type": "image_url", "image_url": {"url": a["url"]}} for a in attachments]
         + [{"type": "text", "text": message}]
     ) if attachments else message
-    sess['history'].append({"role": "user", "content": user_content})
-    sess['history'].append({"role": "assistant", "content": ""}) 
+
+    # Akış boyunca YERİNDE güncellenecek tek nesneler
+    target_history = sess['history']                     # liste referansı
+    assistant_turn = {"role": "assistant", "content": ""}  # dict referansı
+
+    target_history.append({"role": "user", "content": user_content})
+    target_history.append(assistant_turn)
+
+    # Konuşma kaydını bu listeye BAĞLA (kopya değil referans)
     save_conv_to_history(sess)
-    ai_turn_index = len(sess['history']) - 1
 
     web_search = data.get('web_search', sess.get('web_search', False))
     image_mode = data.get('image_mode', sess.get('image_mode', False))
     image_model_id = data.get('image_model', sess.get('image_model', DEFAULT_IMAGE_MODEL_ID))
     aspect_ratio = data.get('aspect_ratio', sess.get('aspect_ratio', DEFAULT_ASPECT))
 
-    def generate():
-        full_response = ""
-        history_saved = False
+    def on_delta(text_so_far):
+        # O(1), throttle YOK — her token anında kalıcı yapıda
+        set_turn_content(assistant_turn, text_so_far, None)
 
+    def on_images(text_so_far, urls):
+        set_turn_content(assistant_turn, text_so_far, urls)
+
+    def generate():
         if new_local_conv_id:
             yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
 
         try:
-            for event in stream_message(client, api_message, attachments, web_search, image_mode, image_model_id, aspect_ratio, sess):
-                if event.startswith("data: "):
-                    try:
-                        d = json.loads(event[6:])
-                        if d.get('type') == 'chunk':
-                            full_response += d.get('content', '')
-                        elif d.get('type') == 'done':
-                            fr = d.get('full_response', full_response)
-                            if ai_turn_index < len(sess['history']):
-                                sess['history'][ai_turn_index] = {"role": "assistant", "content": fr}
-                            save_conv_to_history(sess)
-                            history_saved = True
-                        elif d.get('type') == 'stream_interrupted':
-                            full_response = d.get('full_response', full_response)
-                    except Exception:
-                        pass
+            for event in stream_message(
+                client, api_message, attachments, web_search, image_mode,
+                image_model_id, aspect_ratio, sess,
+                on_delta=on_delta, on_images=on_images,
+            ):
                 yield event
         except GeneratorExit:
+            # İstemci gitti; veri zaten on_delta ile yazıldı
             pass
         finally:
-            if not history_saved:
-                if ai_turn_index < len(sess['history']):
-                    sess['history'][ai_turn_index] = {"role": "assistant", "content": full_response}
+            # Başlık/sayaç tazeleme; içerik zaten canlı senkronize
+            try:
                 save_conv_to_history(sess)
+            except Exception:
+                pass
 
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no',
-                              'Connection': 'close'})
+                             'Connection': 'close'})
 
 @app.route('/api/abort', methods=['POST'])
 def api_abort():
@@ -768,7 +886,7 @@ def api_upload():
 
     file = request.files['file']
     client = sess['client']
-    
+
     filename = file.filename
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
@@ -787,7 +905,7 @@ def api_upload():
         )
     except Exception as e:
         return jsonify({'error': f'Yükleme hatası: {str(e)}'}), 500
-    
+
     if r.status_code in (200, 201):
         try:
             data = r.json()
@@ -816,22 +934,20 @@ def api_new_chat():
     carry = data.get('carry_history', False)
     carry_conv_id = data.get('conv_id')
 
-    carry_history = []
+    carry_history = None
     carry_local_id = None
     if carry:
         if carry_conv_id:
             for c in sess.get('conversations', []):
                 if c.get('conv_id') == carry_conv_id:
-                    carry_history = c['history'][:]
+                    carry_history = c['history']        # referans
                     carry_local_id = carry_conv_id
                     break
-        if not carry_history:
-            carry_history = sess.get('history', [])
+        if carry_history is None and sess.get('history'):
+            carry_history = sess['history']
             carry_local_id = sess.get('active_local_conv_id')
 
     save_conv_to_history(sess)
-    sess['history'] = []
-    sess['active_local_conv_id'] = None
 
     client = sess['client']
     client.messages = []
@@ -842,6 +958,10 @@ def api_new_chat():
         sess['history'] = carry_history
         sess['active_local_conv_id'] = carry_local_id
         new_conv_id = carry_local_id
+        save_conv_to_history(sess)
+    else:
+        sess['history'] = []
+        sess['active_local_conv_id'] = None
 
     return jsonify({'success': True, 'new_conv_id': new_conv_id, 'carried': bool(carry_history)})
 
@@ -855,17 +975,17 @@ def api_reset():
     old_sess = get_sess()
     model = old_sess.get('model', DEFAULT_MODEL) if old_sess else DEFAULT_MODEL
 
-    carry_history = []
+    carry_history = None
     carry_local_id = None
     if carry and old_sess:
         if carry_conv_id:
             for c in old_sess.get('conversations', []):
                 if c.get('conv_id') == carry_conv_id:
-                    carry_history = c['history'][:]
+                    carry_history = c['history']        # referans
                     carry_local_id = carry_conv_id
                     break
-        if not carry_history:
-            carry_history = old_sess.get('history', [])
+        if carry_history is None and old_sess.get('history'):
+            carry_history = old_sess['history']
             carry_local_id = old_sess.get('active_local_conv_id')
 
     if old_sess:
@@ -882,6 +1002,9 @@ def api_reset():
         client.bootstrap(model=model)
         sess['client'] = client
     except Exception as e:
+        # Hesap açılamadıysa eski oturumu geri koy — veri kaybolmasın
+        if old_sess:
+            _sessions[sid] = old_sess
         return jsonify({'success': False, 'error': f'Hesap oluşturulamadı: {str(e)}'}), 500
 
     new_conv_id = None
@@ -889,6 +1012,7 @@ def api_reset():
         sess['history'] = carry_history
         sess['active_local_conv_id'] = carry_local_id
         new_conv_id = carry_local_id
+        save_conv_to_history(sess)
 
     resp_data = {
         'success': True, 'email': client.email, 'model': model,
@@ -930,7 +1054,7 @@ def api_clear():
     if not sess or not sess.get('client'):
         return jsonify({'error': 'Oturum yok'}), 401
     save_conv_to_history(sess)
-    sess['history'] = []
+    sess['history'] = []                      # yeni liste; eski konuşma kendi listesini korur
     sess['active_local_conv_id'] = None
     client = sess['client']
     client.messages = []
@@ -939,20 +1063,25 @@ def api_clear():
 
 @app.route('/api/history')
 def api_history():
+    """Canlı yapıdan okur — akış devam ederken bile son harfe kadar günceldir."""
     sess = get_sess()
     if not sess:
         return jsonify({'history': []})
     simplified = []
-    for turn in sess.get('history', []):
-        role = turn['role']
-        content = turn['content']
+    for turn in list(sess.get('history', [])):
+        role = turn.get('role')
+        content = turn.get('content')
         if isinstance(content, list):
-            text = next((i['text'] for i in content if i.get('type') == 'text'), '')
+            text = next((i.get('text', '') for i in content if i.get('type') == 'text'), '')
             images = [i['image_url']['url'] for i in content if i.get('type') == 'image_url']
             simplified.append({'role': role, 'text': text, 'images': images})
         else:
-            simplified.append({'role': role, 'text': content, 'images': []})
-    return jsonify({'history': simplified})
+            simplified.append({'role': role, 'text': content or '', 'images': []})
+    return jsonify({
+        'history': simplified,
+        'conv_id': sess.get('active_local_conv_id'),
+        'streaming': bool(sess.get('active_ws')),
+    })
 
 @app.route('/api/conversations')
 def api_conversations():
@@ -1050,4 +1179,6 @@ def api_conversation_rename():
 if __name__ == '__main__':
     print("Use AI Web Interface başlatılıyor...")
     print("http://localhost:5000 adresine gidin")
-    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
+    # use_reloader=False: kod dosyasına dokunulunca süreç yeniden başlayıp
+    # RAM'deki oturum/geçmiş silinmesin.
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
