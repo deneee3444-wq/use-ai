@@ -61,6 +61,8 @@
   --chip-w:calc((100% - 64px) / 9);
   --chip-h:84px;
 
+  --gutter:10px;
+
   --sh1:0 1px 2px rgba(16,20,40,.06);
   --sh2:0 2px 6px rgba(16,20,40,.06),0 10px 24px rgba(16,20,40,.08);
   --sh3:0 4px 12px rgba(16,20,40,.08),0 24px 56px rgba(16,20,40,.14);
@@ -70,8 +72,6 @@
   --fast:.14s; --mid:.22s;
 
   --glass:rgba(255,255,255,.82);
-
-  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949bb0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
   /* ikon maskeleri — modern set */
   --ic-spark:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 1.8c.52 5.42 4.26 9.16 9.68 9.68v1.04c-5.42.52-9.16 4.26-9.68 9.68h-1.04c-.52-5.42-4.26-9.16-9.68-9.68v-1.04c5.42-.52 9.16-4.26 9.68-9.68z'/%3E%3C/svg%3E");
@@ -115,8 +115,6 @@
   --sh1:0 1px 2px rgba(0,0,0,.5);
   --sh2:0 2px 8px rgba(0,0,0,.45),0 12px 28px rgba(0,0,0,.4);
   --sh3:0 4px 14px rgba(0,0,0,.5),0 28px 64px rgba(0,0,0,.6);
-
-  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a0b5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* ─────────── 2. BASE ─────────── */
@@ -152,6 +150,7 @@ svg{display:block;flex:none}
 
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes slot-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
 /* ─────────── 3. SETUP ─────────── */
 .setup-overlay{
@@ -189,18 +188,13 @@ svg{display:block;flex:none}
   font-size:10.5px;font-weight:600;letter-spacing:.1em;
   text-transform:uppercase;color:var(--text3);margin-bottom:8px;text-align:left;
 }
-.setup-select,.setup-input{
+.setup-input{
   width:100%;padding:13px 15px;border-radius:var(--r2);
   background:var(--surface2);border:1px solid var(--border);
   font-size:15px;outline:none;margin-bottom:18px;
   transition:border-color var(--fast),box-shadow var(--fast),background var(--fast);
 }
-.setup-select{
-  appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;
-  background-image:var(--chev);
-  background-repeat:no-repeat;background-position:right 14px center;
-}
-.setup-select:focus,.setup-input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px var(--accent-dim)}
+.setup-input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px var(--accent-dim)}
 .setup-btn{
   width:100%;padding:14px;border-radius:var(--r2);
   background:linear-gradient(180deg,var(--accent),var(--accent-hover));
@@ -329,7 +323,6 @@ svg{display:block;flex:none}
 }
 .account-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:7px}
 .account-row{display:flex;align-items:center;gap:8px}
-/* overflow kaldırıldı → noktanın parlama halkası artık kırpılmıyor */
 .account-email{font-size:12px;color:var(--text2);flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding-left:3px}
 .account-email-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 .account-dot{
@@ -432,7 +425,6 @@ svg{display:block;flex:none}
   flex:1;min-height:0;position:relative;
   display:flex;flex-direction:column;overflow:hidden;padding:8px 0 0;
 }
-/* Scroll çubuğu artık sohbet alanının en sağında */
 .messages-scroll{
   flex:1;min-height:0;width:100%;
   overflow-y:auto;overflow-x:hidden;
@@ -459,14 +451,14 @@ svg{display:block;flex:none}
 .scroll-bottom-btn svg{pointer-events:none}
 
 .msg{
-  display:flex;gap:13px;padding:4px 0 28px;position:relative;
+  display:flex;gap:13px;padding:4px 0 18px;position:relative;
   animation:msg-in .28s var(--e-out) both;min-width:0;
 }
 @keyframes msg-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 .msg-avatar-col{
   display:flex;flex-direction:column;align-items:center;
-  flex-shrink:0;align-self:stretch;position:relative;width:30px;
+  flex-shrink:0;width:30px;
 }
 .msg-avatar{
   width:30px;height:30px;border-radius:10px;flex-shrink:0;
@@ -480,18 +472,6 @@ svg{display:block;flex:none}
 .msg-avatar.ai::after{-webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat}
 .msg-avatar.user{color:var(--text2);background:var(--surface2);border:1px solid var(--border)}
 .msg-avatar.user::after{-webkit-mask:var(--ic-user) center/contain no-repeat;mask:var(--ic-user) center/contain no-repeat}
-
-/* prompt'a aktar → mesajın ALT hizasında */
-.msg-use-btn{
-  position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
-  display:flex;align-items:center;justify-content:center;
-  width:26px;height:26px;border-radius:8px;
-  background:var(--surface2);border:1px solid transparent;color:var(--text3);
-  opacity:0;pointer-events:none;
-  transition:opacity var(--fast),background var(--fast),color var(--fast),border-color var(--fast);
-}
-.msg:hover .msg-use-btn{opacity:1;pointer-events:auto}
-.msg-use-btn:hover{background:var(--accent-dim);border-color:var(--user-border);color:var(--accent-light)}
 
 .msg-body{flex:1;min-width:0;padding-top:2px;position:relative;max-width:92%}
 .msg-role{
@@ -508,6 +488,25 @@ svg{display:block;flex:none}
   padding:2px 8px;border-radius:var(--pill);
 }
 
+/* mesaj alt aksiyon çubuğu — her zaman en altta, sabit hizalı */
+.msg-actions{
+  display:flex;align-items:center;gap:4px;margin-top:8px;
+  opacity:0;transition:opacity var(--fast);
+}
+.msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}
+@media(hover:none){.msg-actions{opacity:1}}
+.msg-act-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:8px;flex:none;
+  background:transparent;border:1px solid transparent;color:var(--text3);
+  transition:background var(--fast),color var(--fast),border-color var(--fast);
+}
+.msg-act-btn:hover{background:var(--accent-dim);border-color:var(--user-border);color:var(--accent-light)}
+.msg-act-btn .ic-check{display:none}
+.msg-act-btn.copied{color:var(--success);border-color:color-mix(in srgb,var(--success) 40%,transparent)}
+.msg-act-btn.copied .ic-copy{display:none}
+.msg-act-btn.copied .ic-check{display:block}
+
 /* kullanıcı balonu sağda */
 .msg.user{justify-content:flex-end}
 .msg.user .msg-avatar-col{order:2}
@@ -520,6 +519,7 @@ svg{display:block;flex:none}
   box-shadow:var(--sh1);
 }
 .msg.user .msg-attachments,.msg.user .msg-images{justify-content:flex-end;max-width:100%}
+.msg.user .msg-actions{justify-content:flex-end}
 
 /* ─────────── 7. MARKDOWN ─────────── */
 .msg-text{color:var(--text);line-height:1.72;word-wrap:break-word;overflow-wrap:break-word;min-width:0}
@@ -696,7 +696,7 @@ svg{display:block;flex:none}
 .msg-expand-link svg{transition:transform var(--mid) var(--e)}
 .msg-expand-link.expanded svg{transform:rotate(180deg)}
 
-/* sistem bilgileri — mobil/masaüstü aynı boşluk */
+/* sistem bilgileri */
 .sys-log{
   display:flex;align-items:center;justify-content:center;gap:8px;
   text-align:center;font-size:12.5px;color:var(--text3);
@@ -709,7 +709,7 @@ svg{display:block;flex:none}
   background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r3);box-shadow:var(--sh1);
 }
-.msg + .sys-log,.msg + .sys-log-action{margin-top:-12px}
+.msg + .sys-log,.msg + .sys-log-action{margin-top:-6px}
 .sys-log + .sys-log{margin-top:-6px}
 body.hide-sys-logs .sys-log{display:none}
 .sys-btn{
@@ -753,20 +753,30 @@ body.hide-sys-logs .sys-log{display:none}
 .input-area{padding:0 24px 22px;position:relative;z-index:10}
 .input-inner{max-width:var(--read);margin:0 auto}
 
-.attachments-preview-container{
-  max-height:0;overflow:hidden;padding:0;margin:0;
-  transition:max-height var(--mid) var(--e),padding var(--mid) var(--e),margin var(--mid) var(--e);
+.input-box{
+  display:flex;flex-direction:column;align-items:stretch;gap:var(--gutter);
+  background:var(--glass);backdrop-filter:blur(20px) saturate(170%);
+  -webkit-backdrop-filter:blur(20px) saturate(170%);
+  border:1px solid var(--border);border-radius:var(--r4);
+  padding:var(--gutter) 12px;box-shadow:var(--sh2);
+  transition:border-color var(--mid),box-shadow var(--mid);
 }
+.input-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-dim),var(--sh2)}
+
+/* ── ataç önizleme: boşken tamamen kapalı, açıkken simetrik ── */
+.attachments-preview-container{display:none}
 .attachments-preview-container.has-items{
-  padding-bottom:11px;max-height:200px;
+  display:block;padding-bottom:var(--gutter);
   border-bottom:1px solid var(--border);
+  animation:slot-in .18s var(--e-out) both;
 }
+.attachments-preview-container.has-items.has-scrollbar{padding-bottom:2px}
 .attachments-preview{
   display:flex;flex-wrap:nowrap;gap:9px;
-  overflow-x:auto !important;overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;padding-top:2px;padding-bottom:0;
+  overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
 }
-.attachments-preview-container.has-scrollbar .attachments-preview{padding-bottom:12px}
+.attachments-preview-container.has-scrollbar .attachments-preview{padding-bottom:8px}
 .attachments-preview::-webkit-scrollbar{height:6px}
 .attachments-preview::-webkit-scrollbar-thumb{background:var(--border-2);border:none;border-radius:var(--pill)}
 .att-chip{
@@ -791,16 +801,18 @@ body.hide-sys-logs .sys-log{display:none}
 .att-chip>button:hover{background:var(--error)}
 @media(hover:none){.att-chip>button{opacity:1}}
 
-.input-box{
-  display:flex;flex-direction:column;align-items:stretch;gap:8px;
-  background:var(--glass);backdrop-filter:blur(20px) saturate(170%);
-  -webkit-backdrop-filter:blur(20px) saturate(170%);
-  border:1px solid var(--border);border-radius:var(--r4);
-  padding:10px 12px 9px;box-shadow:var(--sh2);
-  transition:border-color var(--mid),box-shadow var(--mid);
+/* ── görsel modu satırı: üst boşluk = alt boşluk ── */
+.image-config{
+  display:none;align-items:center;gap:8px;flex-wrap:nowrap;
+  padding-bottom:var(--gutter);
+  border-bottom:1px solid var(--border);
 }
-.input-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-dim),var(--sh2)}
-/* dikey padding yok → scrollHeight ölçümü birebir; hayalet scroll yok */
+.image-config.active{display:flex;animation:slot-in .18s var(--e-out) both}
+.image-config-label{
+  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text3);flex:none;white-space:nowrap;
+}
+
 .input-box textarea{
   width:100%;background:none;border:none;outline:none;color:var(--text);
   font-size:15px;line-height:22px;resize:none;
@@ -834,72 +846,58 @@ body.hide-sys-logs .sys-log{display:none}
 .send-btn:active{transform:scale(.92)}
 .send-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
 
-.model-picker{position:relative;flex-shrink:0}
-.model-picker-btn{
+/* ── ORTAK SEÇİCİ BİLEŞENİ (model + görsel ayarları) ── */
+.model-picker,.picker{position:relative;flex:none}
+.model-picker-btn,.picker-btn{
   display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;
   border-radius:11px;border:1px solid var(--border);background:var(--surface2);
-  color:var(--text2);font-size:12.5px;font-weight:550;white-space:nowrap;
-  max-width:180px;overflow:hidden;
+  color:var(--text2);font-family:var(--font);font-size:12.5px;font-weight:550;
+  letter-spacing:-.006em;white-space:nowrap;max-width:190px;overflow:hidden;
   transition:background var(--fast),color var(--fast),border-color var(--fast);
 }
-.model-picker-btn span{overflow:hidden;text-overflow:ellipsis}
-.model-picker-btn:hover{color:var(--text);border-color:var(--border-2)}
-.model-picker-btn svg.chev{opacity:.6;transition:transform var(--mid) var(--e)}
-.model-picker.open .model-picker-btn{border-color:var(--accent);color:var(--text)}
-.model-picker.open .model-picker-btn svg.chev{transform:rotate(180deg)}
+.model-picker-btn>span,.picker-btn .picker-main,.picker-btn .picker-sub{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.picker-btn .picker-sub{color:var(--text3);font-weight:450}
+.model-picker-btn:hover,.picker-btn:hover{color:var(--text);border-color:var(--border-2)}
+.model-picker-btn svg.chev,.picker-btn svg.chev{opacity:.6;margin-left:auto;transition:transform var(--mid) var(--e)}
+.model-picker.open .model-picker-btn,.picker.open .picker-btn{
+  border-color:var(--accent);color:var(--text);background:var(--surface);
+}
+.model-picker.open .model-picker-btn svg.chev,.picker.open .picker-btn svg.chev{transform:rotate(180deg)}
 
-.model-picker-menu{
+.model-picker-menu,.picker-menu{
   display:none;position:absolute;bottom:calc(100% + 10px);right:0;
   background:var(--glass);backdrop-filter:blur(20px) saturate(170%);
   -webkit-backdrop-filter:blur(20px) saturate(170%);
   border:1px solid var(--border);border-radius:var(--r3);
-  padding:6px;min-width:250px;max-height:340px;overflow-y:auto;
-  z-index:120;box-shadow:var(--sh3);
+  padding:6px;min-width:220px;max-height:320px;overflow-y:auto;
+  z-index:130;box-shadow:var(--sh3);
 }
-.model-picker.open .model-picker-menu{display:block;animation:pop .16s var(--e-out) both;transform-origin:bottom right}
+.model-picker-menu{min-width:250px;max-height:340px}
+.picker-menu.align-left{left:0;right:auto}
+.model-picker.open .model-picker-menu,.picker.open .picker-menu{
+  display:block;animation:pop .16s var(--e-out) both;transform-origin:bottom right;
+}
+.picker.open .picker-menu.align-left{transform-origin:bottom left}
+
 .model-cat{
   padding:8px 10px 5px;font-size:9.5px;font-weight:650;
   letter-spacing:.12em;text-transform:uppercase;color:var(--text3);
 }
-.model-picker-item{
+.model-picker-item,.picker-item{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   padding:9px 11px;border-radius:var(--r1);cursor:pointer;
-  font-size:13px;color:var(--text2);
+  font-size:13px;font-weight:450;color:var(--text2);
   transition:background var(--fast),color var(--fast);
 }
-.model-picker-item:hover{background:var(--surface3);color:var(--text)}
-.model-picker-item.active{color:var(--text);background:var(--accent-dim);font-weight:550}
-.model-picker-item svg{color:var(--accent);opacity:0}
-.model-picker-item.active svg{opacity:1}
-
-/* ── görsel modu satırı: üst boşluk = alt boşluk (10 / 10) ── */
-.image-config{
-  display:none;align-items:center;gap:8px;
-  padding:0 2px 10px;
-  border-bottom:1px solid var(--border);
-  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none;
-}
-.image-config::-webkit-scrollbar{display:none}
-.image-config.active{display:flex}
-.image-config-label{
-  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--text3);flex:none;white-space:nowrap;line-height:32px;
-}
-.image-config select{
-  flex:none;appearance:none;-webkit-appearance:none;
-  height:32px;padding:0 30px 0 11px;border-radius:10px;
-  background-color:var(--surface2);
-  background-image:var(--chev);
-  background-repeat:no-repeat;background-position:right 10px center;background-size:11px 11px;
-  border:1px solid var(--border);color:var(--text2);
-  font-size:12.5px;font-weight:550;line-height:30px;cursor:pointer;outline:none;
-  max-width:190px;text-overflow:ellipsis;
-  transition:background-color var(--fast),color var(--fast),border-color var(--fast),box-shadow var(--fast);
-}
-.image-config select:hover{color:var(--text);border-color:var(--border-2)}
-.image-config select:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);outline:none}
-.image-config select option{background:var(--surface);color:var(--text)}
+.model-picker-item:hover,.picker-item:hover{background:var(--surface3);color:var(--text)}
+.model-picker-item.active,.picker-item.active{color:var(--text);background:var(--accent-dim);font-weight:550}
+.model-picker-item svg,.picker-item svg{color:var(--accent);opacity:0;flex:none}
+.model-picker-item.active svg,.picker-item.active svg{opacity:1}
+.picker-item-label{display:flex;align-items:baseline;gap:8px;min-width:0;overflow:hidden}
+.picker-item-label b{font-weight:inherit;flex:none}
+.picker-item-label em{font-style:normal;color:var(--text3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ─────────── 10. MODAL / TOAST ─────────── */
 .modal-overlay{
@@ -947,22 +945,21 @@ body.hide-sys-logs .sys-log{display:none}
   background:var(--glass);backdrop-filter:blur(18px) saturate(170%);
   -webkit-backdrop-filter:blur(18px) saturate(170%);
   border:1px solid var(--border);border-radius:var(--r3);
-  padding:11px 15px;font-size:13.2px;color:var(--text2);
+  padding:11px 15px;font-size:13.2px;color:var(--text);
   box-shadow:var(--sh3);max-width:300px;width:max-content;
   animation:toast-in .28s var(--e-out) both;pointer-events:all;
   display:flex;align-items:flex-start;gap:9px;
 }
 .toast strong{
   flex-shrink:0;width:18px;height:18px;border-radius:50%;
-  display:grid;place-items:center;font-size:10.5px;color:#fff;background:var(--text3);
+  display:grid;place-items:center;font-size:10.5px;font-weight:700;
+  color:#fff;background:var(--text3);line-height:1;
 }
 .toast .toast-msg{flex:1;min-width:0;word-break:break-word;overflow-wrap:anywhere;line-height:1.5}
 @keyframes toast-in{from{opacity:0;transform:translateX(22px) scale(.96)}to{opacity:1;transform:none}}
-.toast.success{color:var(--text)}
+.toast.info strong{background:var(--text3)}
 .toast.success strong{background:var(--success)}
-.toast.error{color:var(--text)}
 .toast.error strong{background:var(--error)}
-.toast.warn{color:var(--text)}
 .toast.warn strong{background:var(--warn)}
 
 .sidebar-overlay{
@@ -1002,14 +999,21 @@ body.hide-sys-logs .sys-log{display:none}
   .att-chip.msg-att img,.att-chip.msg-att .att-chip-fallback{height:120px}
   .setup-card{padding:32px 24px}
   .modal{padding:24px 20px}
-  .model-picker-btn{max-width:110px}
   .settings-popup{right:12px;top:56px;min-width:236px}
-  .image-config select{max-width:150px}
-  /* bildirimler mobilde de sağda kalsın */
+
+  /* görsel ayarları mobilde yan yana sığar — kaydırma yok */
+  .model-picker-btn{max-width:110px}
+  .image-config{gap:8px}
+  .image-config .image-config-label{display:none}
+  .image-config .picker{flex:1 1 0;min-width:0}
+  .image-config .picker-btn{width:100%;max-width:none}
+  .picker-btn .picker-sub{display:none}
+  .picker-menu{min-width:170px;max-width:min(74vw,260px)}
+
   .toast-wrap{top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;left:auto;align-items:flex-end}
   .toast{max-width:min(78vw,300px)}
   .sys-log,.sys-log-action{margin-bottom:14px}
-  .msg + .sys-log,.msg + .sys-log-action{margin-top:-14px}
+  .msg + .sys-log,.msg + .sys-log-action{margin-top:-6px}
 }
 
 @media(prefers-reduced-motion:reduce){
@@ -1192,9 +1196,22 @@ body.hide-sys-logs .sys-log{display:none}
 
           <div class="image-config" id="imageConfig">
             <span class="image-config-label">Görsel modeli</span>
-            <select id="imageModelSelect" onchange="S.imageModel=this.value;fetch('/api/toggle_feature',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:'image_model',value:this.value})})"></select>
+            <div class="picker" id="imgModelPicker">
+              <button class="picker-btn" type="button" title="Görsel modeli" onclick="togglePicker(event,'imgModelPicker')">
+                <span class="picker-main" id="imgModelLabel">—</span>
+                <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="picker-menu align-left" id="imgModelMenu"></div>
+            </div>
             <span class="image-config-label">Oran</span>
-            <select id="aspectRatioSelect" onchange="S.aspectRatio=this.value;fetch('/api/toggle_feature',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:'aspect_ratio',value:this.value})})"></select>
+            <div class="picker" id="aspectPicker">
+              <button class="picker-btn" type="button" title="En-boy oranı" onclick="togglePicker(event,'aspectPicker')">
+                <span class="picker-main" id="aspectLabelMain">—</span>
+                <span class="picker-sub" id="aspectLabelSub"></span>
+                <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="picker-menu" id="aspectMenu"></div>
+            </div>
           </div>
 
           <textarea id="msgInput" placeholder="Mesajınızı yazın..." rows="1"
@@ -1298,8 +1315,10 @@ const EMPTY_STATE_HTML = `
     </div>
   </div>`;
 
-const ICON_COPY  = '<svg class="ic-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="2.6"/><path d="M5.5 15H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h8.5A1.5 1.5 0 0 1 15 5v.5"/></svg>';
-const ICON_CHECK = '<svg class="ic-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>';
+const ICON_COPY  = '<svg class="ic-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="2.6"/><path d="M5.5 15H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h8.5A1.5 1.5 0 0 1 15 5v.5"/></svg>';
+const ICON_CHECK = '<svg class="ic-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>';
+const ICON_TICK  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>';
+const ICON_TO_PROMPT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5v6a4 4 0 0 0 4 4h12"/><path d="m15.5 10 4.5 4.5-4.5 4.5"/></svg>';
 
 const ICON_SEND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19.5V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></svg>';
 const ICON_STOP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2.6"/></svg>';
@@ -1377,6 +1396,51 @@ async function boot() {
   }
 }
 
+// ─── ORTAK SEÇİCİ (PICKER) MANTIĞI ────────────────────────────────────
+function closeAllPickers() {
+  document.querySelectorAll('.picker.open,.model-picker.open').forEach(p => p.classList.remove('open'));
+}
+
+function togglePicker(e, id) {
+  if (e) e.stopPropagation();
+  const p = document.getElementById(id);
+  if (!p) return;
+  const willOpen = !p.classList.contains('open');
+  closeAllPickers();
+  if (willOpen) p.classList.add('open');
+}
+
+function buildPickerMenu(menuEl, items, currentId, onSelect) {
+  if (!menuEl) return;
+  menuEl.innerHTML = '';
+  items.forEach(it => {
+    const row = document.createElement('div');
+    row.className = 'picker-item' + (it.id === currentId ? ' active' : '');
+
+    const label = document.createElement('span');
+    label.className = 'picker-item-label';
+    if (it.sub) {
+      const b = document.createElement('b');
+      b.textContent = it.main;
+      const em = document.createElement('em');
+      em.textContent = it.sub;
+      label.appendChild(b);
+      label.appendChild(em);
+    } else {
+      label.textContent = it.main;
+    }
+
+    row.appendChild(label);
+    row.insertAdjacentHTML('beforeend', ICON_TICK);
+    row.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeAllPickers();
+      onSelect(it.id);
+    });
+    menuEl.appendChild(row);
+  });
+}
+
 // ─── MODEL PICKER ──────────────────────────────────────────────────────
 function modelLabel(id) {
   const m = S.models.find(x => x.id === id);
@@ -1395,26 +1459,24 @@ function renderModelPicker() {
     }
     html += `<div class="model-picker-item${m.id === S.model ? ' active' : ''}" onclick="selectModel('${escHtml(m.id)}')">
       <span>${escHtml(m.label)}</span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>
+      ${ICON_TICK}
     </div>`;
   });
   menu.innerHTML = html;
 }
 
 function toggleModelPicker(e) {
-  e.stopPropagation();
-  document.getElementById('modelPicker').classList.toggle('open');
+  togglePicker(e, 'modelPicker');
 }
 
 async function selectModel(id) {
-  document.getElementById('modelPicker').classList.remove('open');
+  closeAllPickers();
   if (id === S.model) return;
   await changeModel(id);
 }
 
 document.addEventListener('click', (e) => {
-  const picker = document.getElementById('modelPicker');
-  if (picker && !picker.contains(e.target)) picker.classList.remove('open');
+  if (!e.target.closest('.picker, .model-picker')) closeAllPickers();
   document.querySelectorAll('.conv-menu').forEach(m => m.remove());
   document.querySelectorAll('.conv-item.menu-open').forEach(i => i.classList.remove('menu-open'));
 });
@@ -1705,7 +1767,9 @@ function ensureImages(msgEl, urls) {
   if (!div) {
     div = document.createElement('div');
     div.className = 'msg-images';
-    body.appendChild(div);
+    const actions = body.querySelector('.msg-actions');
+    if (actions) body.insertBefore(div, actions);
+    else body.appendChild(div);
   }
   missing.forEach(u => {
     const img = document.createElement('img');
@@ -2132,14 +2196,15 @@ function appendMessage(role, text, images=[], streaming=false) {
   el.innerHTML = `
     <div class="msg-avatar-col">
       <div class="msg-avatar ${roleClass}"></div>
-      <button class="msg-use-btn" title="Prompt'a aktar" onclick="useInPrompt(this)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5v6a4 4 0 0 0 4 4h12"/><path d="m15.5 10 4.5 4.5-4.5 4.5"/></svg>
-      </button>
     </div>
     <div class="msg-body">
       <div class="msg-role ${roleClass}">${roleLabel}</div>
       <div class="msg-text"></div>
       ${imgsHtml}
+      <div class="msg-actions">
+        <button class="msg-act-btn" type="button" title="Prompt'a aktar" aria-label="Prompt'a aktar" onclick="useInPrompt(this)">${ICON_TO_PROMPT}</button>
+        <button class="msg-act-btn" type="button" title="Kopyala" aria-label="Mesajı kopyala" onclick="copyMsgText(this)">${ICON_COPY}${ICON_CHECK}</button>
+      </div>
     </div>
   `;
 
@@ -2223,7 +2288,7 @@ function renderMarkdown(el, text, streaming=false) {
   if (!streaming) applyCollapseIfLong(el);
 }
 
-// ─── UZUN MESAJ KISALTMA (ayarlardan kapatılabilir) ───────────────────
+// ─── UZUN MESAJ KISALTMA ──────────────────────────────────────────────
 const COLLAPSE_THRESHOLD = 480;
 
 function isCollapseOn() {
@@ -2328,7 +2393,7 @@ async function handleFiles(input) {
   input.value = '';
   for (const file of files) {
     const shortName = truncateFileName(file.name, 28);
-    toast(`${shortName} yükleniyor...`);
+    toast(`${shortName} yükleniyor...`, 'info');
     const fd = new FormData();
     fd.append('file', file);
     if (S.activeConvId) fd.append('conv_id', S.activeConvId);
@@ -2582,6 +2647,7 @@ function closeConfirmModal(confirmed) {
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  closeAllPickers();
   const confirmModal = document.getElementById('confirmModal');
   if (confirmModal && confirmModal.style.display === 'flex') closeConfirmModal(false);
   else closeModal('creditModal');
@@ -2597,28 +2663,32 @@ function closeSidebar() {
   document.getElementById('sidebarOverlay').classList.remove('active');
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────
-function toast(msg, type='') {
+// ─── TOAST (her zaman ikonlu) ─────────────────────────────────────────
+function toast(msg, type='info') {
   const wrap = document.getElementById('toastWrap');
+  const icons = {success:'✓', error:'✕', warn:'!', info:'i'};
+  const kind = icons[type] ? type : 'info';
+
   const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  const icons = {success:'✓', error:'✕', warn:'!'};
-  const cleanMsg = String(msg).replace(/\s*✓\s*/g, '').replace(/\s*✕\s*/g, '');
-  if (icons[type]) {
-    const iconEl = document.createElement('strong');
-    iconEl.textContent = icons[type];
-    el.appendChild(iconEl);
-  }
+  el.className = 'toast ' + kind;
+
+  const cleanMsg = String(msg).replace(/\s*✓\s*/g, '').replace(/\s*✕\s*/g, '').trim();
+
+  const iconEl = document.createElement('strong');
+  iconEl.textContent = icons[kind];
+  el.appendChild(iconEl);
+
   const msgEl = document.createElement('span');
   msgEl.className = 'toast-msg';
   msgEl.textContent = cleanMsg;
   el.appendChild(msgEl);
+
   wrap.appendChild(el);
-  setTimeout(()=>{
-    el.style.opacity='0';
-    el.style.transform='translateX(20px)';
-    el.style.transition='all .3s';
-    setTimeout(()=>el.remove(), 300);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(20px)';
+    el.style.transition = 'all .3s';
+    setTimeout(() => el.remove(), 300);
   }, 3000);
 }
 
@@ -2817,16 +2887,30 @@ function restorePrompt(msg) {
   }
 }
 
-// ─── USE IN PROMPT ────────────────────────────────────────────────────
-function useInPrompt(btn) {
+// ─── MESAJ AKSİYONLARI ────────────────────────────────────────────────
+function msgPlainText(btn) {
   const msg = btn.closest('.msg');
-  const textEl = msg.querySelector('.msg-text');
-  const text = textEl ? (textEl.innerText || textEl.textContent || '').trim() : '';
+  const textEl = msg && msg.querySelector('.msg-text');
+  return textEl ? (textEl.innerText || textEl.textContent || '').trim() : '';
+}
+
+function useInPrompt(btn) {
+  const text = msgPlainText(btn);
   if (!text) return;
   const input = document.getElementById('msgInput');
   input.value = text;
   autoResize(input);
   input.focus();
+}
+
+function copyMsgText(btn) {
+  const text = msgPlainText(btn);
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.title = 'Kopyalandı';
+    setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Kopyala'; }, 1500);
+  }).catch(() => toast('Kopyalanamadı', 'error'));
 }
 
 // ─── NEW CHAT BACKGROUND (423 - manuel mod) ──────────────────────────
@@ -2860,7 +2944,7 @@ async function doNewChatBackground(pendingMsg, pendingAtts) {
 // ─── AUTO NEW CHAT BACKGROUND ─────────────────────────────────────────
 async function doAutoNewChatBackground(pendingMsg, pendingAtts, reason='locked') {
   try {
-    toast('Yeni konuşma oluşturuluyor...');
+    toast('Yeni konuşma oluşturuluyor...', 'info');
 
     const r = await fetch('/api/new_chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -3070,7 +3154,7 @@ function downloadChat(format) {
 
     const clone = document.getElementById('messagesInner').cloneNode(true);
     clone.removeAttribute('id');
-    clone.querySelectorAll('.copy-btn, .msg-use-btn, .msg-expand-link').forEach(n => n.remove());
+    clone.querySelectorAll('.copy-btn, .msg-actions, .msg-expand-link').forEach(n => n.remove());
     clone.querySelectorAll('.stream-cursor').forEach(n => n.remove());
     clone.querySelectorAll('.msg-text.collapsible').forEach(n => n.classList.remove('collapsible'));
     clone.querySelectorAll('.typing-indicator').forEach(n => {
@@ -3111,8 +3195,8 @@ body{font-family:var(--font);font-size:14.5px;line-height:1.62;letter-spacing:-.
 .export-head h1{font-size:18px;font-weight:650;letter-spacing:-.025em}
 .export-head p{font-size:12px;color:var(--text2);margin-top:2px}
 
-.msg{display:flex;gap:13px;padding:4px 0 28px;min-width:0}
-.msg-avatar-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.msg{display:flex;gap:13px;padding:4px 0 22px;min-width:0}
+.msg-avatar-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:30px}
 .msg-avatar{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;margin-top:2px;font-size:0}
 .msg-avatar::after{content:"";width:15px;height:15px;background:currentColor}
 .msg-avatar.ai{color:#fff;background:linear-gradient(140deg,var(--accent),var(--accent-2))}
@@ -3122,6 +3206,7 @@ body{font-family:var(--font);font-size:14.5px;line-height:1.62;letter-spacing:-.
 .msg-body{flex:1;min-width:0;padding-top:2px;max-width:92%}
 .msg-role{font-size:10.5px;font-weight:650;letter-spacing:.11em;text-transform:uppercase;color:var(--text3);margin-bottom:7px;display:flex;align-items:center;gap:8px;width:100%}
 .msg-role.ai{color:var(--accent-light)}
+.msg-actions{display:none}
 .failed-badge{font-size:10px;font-weight:500;letter-spacing:.02em;text-transform:none;display:inline-flex;align-items:center;gap:4px;color:var(--error);margin-left:auto;padding:2px 8px;border-radius:var(--pill);background:color-mix(in srgb,var(--error) 12%,transparent)}
 .msg.user{justify-content:flex-end}
 .msg.user .msg-avatar-col{order:2}
@@ -3171,7 +3256,7 @@ body{font-family:var(--font);font-size:14.5px;line-height:1.62;letter-spacing:-.
 .att-chip-fallback::after{content:"";width:30px;height:30px;background:currentColor;-webkit-mask:var(--ic-file) center/contain no-repeat;mask:var(--ic-file) center/contain no-repeat}
 .sys-log{text-align:center;font-size:12.5px;color:var(--text3);margin:0 auto 14px;padding:0 12px}
 .sys-log-action{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;font-size:12.5px;color:var(--text2);margin:0 auto 14px;padding:11px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r3)}
-.msg + .sys-log,.msg + .sys-log-action{margin-top:-12px}
+.msg + .sys-log,.msg + .sys-log-action{margin-top:-6px}
 .sys-btn{display:none}
 .image-status{display:inline-flex;align-items:center;font-size:13px;color:var(--text2);margin:8px 0;padding:7px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--pill)}
 .empty-state,.empty-chips,.scroll-bottom-btn{display:none}
@@ -3213,18 +3298,23 @@ function triggerDownload(filename, content, mimeType) {
 }
 
 // ─── FEATURE TOGGLES ──────────────────────────────────────────────────
+function postFeature(feature, value) {
+  fetch('/api/toggle_feature', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({feature, value})
+  }).catch(()=>{});
+}
+
 function toggleWebSearch() {
   S.webSearch = !S.webSearch;
   if (S.webSearch && S.imageMode) {
     S.imageMode = false;
     updateImageModeUI();
+    postFeature('image_mode', false);
   }
   updateWebSearchUI();
-  fetch('/api/toggle_feature', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({feature:'web_search', value:S.webSearch})
-  });
-  toast(S.webSearch ? 'Web araması açık' : 'Web araması kapalı', S.webSearch ? 'success' : '');
+  postFeature('web_search', S.webSearch);
+  toast(S.webSearch ? 'Web araması açık' : 'Web araması kapalı', S.webSearch ? 'success' : 'info');
 }
 
 function toggleImageMode() {
@@ -3232,13 +3322,11 @@ function toggleImageMode() {
   if (S.imageMode && S.webSearch) {
     S.webSearch = false;
     updateWebSearchUI();
+    postFeature('web_search', false);
   }
   updateImageModeUI();
-  fetch('/api/toggle_feature', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({feature:'image_mode', value:S.imageMode})
-  });
-  toast(S.imageMode ? 'Görsel modu açık' : 'Görsel modu kapalı', S.imageMode ? 'success' : '');
+  postFeature('image_mode', S.imageMode);
+  toast(S.imageMode ? 'Görsel modu açık' : 'Görsel modu kapalı', S.imageMode ? 'success' : 'info');
 }
 
 function updateWebSearchUI() {
@@ -3251,24 +3339,37 @@ function updateImageModeUI() {
   if (btn) btn.classList.toggle('on', S.imageMode);
   const cfg = document.getElementById('imageConfig');
   if (cfg) cfg.classList.toggle('active', S.imageMode);
+  if (!S.imageMode) closeAllPickers();
   scrollBottom(true);
 }
 
+// ─── GÖRSEL AYARLARI (model kutusuyla aynı bileşen) ───────────────────
+function selectImageModel(id) {
+  S.imageModel = id;
+  renderImageConfig();
+  postFeature('image_model', id);
+}
+
+function selectAspectRatio(id) {
+  S.aspectRatio = id;
+  renderImageConfig();
+  postFeature('aspect_ratio', id);
+}
+
 function renderImageConfig() {
-  const container = document.getElementById('imageConfig');
-  if (!container) return;
-  const modelSel = container.querySelector('#imageModelSelect');
-  const arSel = container.querySelector('#aspectRatioSelect');
-  if (modelSel) {
-    modelSel.innerHTML = S.imageModels.map(m =>
-      `<option value="${escHtml(m.id)}"${m.id===S.imageModel?' selected':''}>${escHtml(m.label)}</option>`
-    ).join('');
-  }
-  if (arSel) {
-    arSel.innerHTML = S.aspectRatios.map(r =>
-      `<option value="${escHtml(r.id)}"${r.id===S.aspectRatio?' selected':''}>${escHtml(r.id)} — ${escHtml(r.label)}</option>`
-    ).join('');
-  }
+  const modelItems = (S.imageModels || []).map(m => ({ id: m.id, main: m.label }));
+  buildPickerMenu(document.getElementById('imgModelMenu'), modelItems, S.imageModel, selectImageModel);
+  const curModel = (S.imageModels || []).find(m => m.id === S.imageModel);
+  const modelLabelEl = document.getElementById('imgModelLabel');
+  if (modelLabelEl) modelLabelEl.textContent = curModel ? curModel.label : '—';
+
+  const arItems = (S.aspectRatios || []).map(r => ({ id: r.id, main: r.id, sub: r.label }));
+  buildPickerMenu(document.getElementById('aspectMenu'), arItems, S.aspectRatio, selectAspectRatio);
+  const curAr = (S.aspectRatios || []).find(r => r.id === S.aspectRatio);
+  const arMain = document.getElementById('aspectLabelMain');
+  const arSub = document.getElementById('aspectLabelSub');
+  if (arMain) arMain.textContent = curAr ? curAr.id : '—';
+  if (arSub) arSub.textContent = curAr ? curAr.label : '';
 }
 
 // ─── SEKME GERİ GELİNCE SENKRONİZE ET ─────────────────────────────────
@@ -3287,4 +3388,3 @@ initScrollBottomWatcher();
 </script>
 </body>
 </html>
-
