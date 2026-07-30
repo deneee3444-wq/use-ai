@@ -30,7 +30,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 APP_PASSWORD = "123"
 
 # Akış davranışı
-IDLE_TIMEOUT = 90.0      # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
+IDLE_TIMEOUT = 180.0      # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
 PING_INTERVAL = 15.0     # SSE keepalive aralığı
 WS_CONNECT_TIMEOUT = 25  # handshake timeout
 
