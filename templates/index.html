@@ -2,10 +2,10 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Use AI</title>
 <meta name="color-scheme" content="light dark">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%235b5bd6'/%3E%3Cstop offset='1' stop-color='%23c026d3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M16 6l2.6 6.9L25.5 15.5 18.6 18.1 16 25l-2.6-6.9L6.5 15.5l6.9-2.6z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%235b5bd6'/%3E%3Cstop offset='1' stop-color='%23c026d3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M16 5.2c.42 4.42 3.92 7.92 8.34 8.34-4.42.42-7.92 3.92-8.34 8.34-.42-4.42-3.92-7.92-8.34-8.34 4.42-.42 7.92-3.92 8.34-8.34z' fill='%23fff' transform='translate(0 2.5)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -71,13 +71,14 @@
 
   --glass:rgba(255,255,255,.82);
 
-  /* ikon maskeleri */
-  --ic-spark:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z'/%3E%3Cpath d='M19 3.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6L16.8 5.7l1.6-.6z'/%3E%3C/svg%3E");
-  --ic-user:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949bb0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+  /* ikon maskeleri — modern set */
+  --ic-spark:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 1.8c.52 5.42 4.26 9.16 9.68 9.68v1.04c-5.42.52-9.16 4.26-9.68 9.68h-1.04c-.52-5.42-4.26-9.16-9.68-9.68v-1.04c5.42-.52 9.16-4.26 9.68-9.68z'/%3E%3C/svg%3E");
+  --ic-user:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20.5c0-3.3-3.6-5.5-8-5.5s-8 2.2-8 5.5'/%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3C/svg%3E");
   --ic-alert:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
   --ic-ask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.1 9.2a3 3 0 0 1 5.8 1c0 2-3 2.8-3 2.8'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
-  --ic-file:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
-  --ic-copy:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='12' height='12' rx='2'/%3E%3Cpath d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'/%3E%3C/svg%3E");
+  --ic-file:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 2.5H7A2.5 2.5 0 0 0 4.5 5v14A2.5 2.5 0 0 0 7 21.5h10a2.5 2.5 0 0 0 2.5-2.5V7.5z'/%3E%3Cpath d='M14.5 2.5v5h5'/%3E%3C/svg%3E");
 }
 
 [data-theme="dark"]{
@@ -114,6 +115,8 @@
   --sh1:0 1px 2px rgba(0,0,0,.5);
   --sh2:0 2px 8px rgba(0,0,0,.45),0 12px 28px rgba(0,0,0,.4);
   --sh3:0 4px 14px rgba(0,0,0,.5),0 28px 64px rgba(0,0,0,.6);
+
+  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a0b5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 /* ─────────── 2. BASE ─────────── */
@@ -177,7 +180,7 @@ svg{display:block;flex:none}
   box-shadow:0 10px 28px var(--accent-glow);
 }
 .setup-logo::after{
-  content:"";width:32px;height:32px;background:currentColor;
+  content:"";width:31px;height:31px;background:currentColor;
   -webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat;
 }
 .setup-card h1{font-size:27px;font-weight:650;letter-spacing:-.032em;margin-bottom:6px}
@@ -189,12 +192,12 @@ svg{display:block;flex:none}
 .setup-select,.setup-input{
   width:100%;padding:13px 15px;border-radius:var(--r2);
   background:var(--surface2);border:1px solid var(--border);
-  font-size:14.5px;outline:none;margin-bottom:18px;
+  font-size:15px;outline:none;margin-bottom:18px;
   transition:border-color var(--fast),box-shadow var(--fast),background var(--fast);
 }
 .setup-select{
-  appearance:none;cursor:pointer;padding-right:38px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949bb0' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;
+  background-image:var(--chev);
   background-repeat:no-repeat;background-position:right 14px center;
 }
 .setup-select:focus,.setup-input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 4px var(--accent-dim)}
@@ -233,7 +236,7 @@ svg{display:block;flex:none}
   box-shadow:0 4px 12px var(--accent-glow);
 }
 .sidebar-logo::after{
-  content:"";width:18px;height:18px;background:currentColor;
+  content:"";width:17px;height:17px;background:currentColor;
   -webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat;
 }
 .sidebar-title{font-weight:650;font-size:15.5px;letter-spacing:-.025em}
@@ -326,10 +329,11 @@ svg{display:block;flex:none}
 }
 .account-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:7px}
 .account-row{display:flex;align-items:center;gap:8px}
-.account-email{font-size:12px;color:var(--text2);flex:1;display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
+/* overflow kaldırıldı → noktanın parlama halkası artık kırpılmıyor */
+.account-email{font-size:12px;color:var(--text2);flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding-left:3px}
 .account-email-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 .account-dot{
-  display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  display:block;width:7px;height:7px;border-radius:50%;flex:0 0 7px;
   background:var(--success);animation:pulse-dot 2s infinite;
   box-shadow:0 0 0 3px color-mix(in srgb,var(--success) 18%,transparent);
 }
@@ -386,7 +390,8 @@ svg{display:block;flex:none}
 
 .settings-popup{
   display:none;position:absolute;top:56px;right:16px;z-index:300;
-  border-radius:var(--r4);padding:14px;min-width:248px;
+  border-radius:var(--r4);padding:14px;min-width:252px;
+  max-height:calc(100dvh - 90px);overflow-y:auto;
 }
 .settings-popup.open{display:block;animation:pop .16s var(--e-out) both;transform-origin:top right}
 .settings-popup-title{
@@ -398,7 +403,7 @@ svg{display:block;flex:none}
   text-transform:uppercase;color:var(--text3);margin:12px 0 5px;
 }
 .settings-section-label:first-of-type{margin-top:0}
-.settings-row{display:flex;align-items:center;justify-content:space-between;padding:6px 2px}
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 2px}
 .settings-row-text{font-size:13.5px;color:var(--text2)}
 .settings-row-btn{
   display:flex;align-items:center;gap:9px;padding:9px 10px;
@@ -421,15 +426,22 @@ svg{display:block;flex:none}
 }
 .switch input:checked + .slider{background:linear-gradient(100deg,var(--accent),var(--accent-2))}
 .switch input:checked + .slider:before{transform:translateX(16px)}
-.auto-mode-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
-.auto-mode-label{font-size:11px;color:var(--text3)}
 
 /* ─────────── 6. MESSAGES ─────────── */
-.messages{flex:1;min-height:0;overflow:hidden;padding:8px 0 0;display:flex;flex-direction:column;position:relative}
+.messages{
+  flex:1;min-height:0;position:relative;
+  display:flex;flex-direction:column;overflow:hidden;padding:8px 0 0;
+}
+/* Scroll çubuğu artık sohbet alanının en sağında */
+.messages-scroll{
+  flex:1;min-height:0;width:100%;
+  overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable both-edges;
+}
 .messages-inner{
-  flex:1;min-height:0;max-width:var(--read);width:100%;margin:0 auto;
-  padding:16px 24px 40px;overflow-y:auto;overflow-x:hidden;
-  scrollbar-gutter:stable;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  max-width:var(--read);width:100%;margin:0 auto;
+  padding:16px 24px 40px;
 }
 
 .scroll-bottom-btn{
@@ -452,12 +464,15 @@ svg{display:block;flex:none}
 }
 @keyframes msg-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
-.msg-avatar-col{display:flex;flex-direction:column;align-items:center;gap:7px;flex-shrink:0}
+.msg-avatar-col{
+  display:flex;flex-direction:column;align-items:center;
+  flex-shrink:0;align-self:stretch;position:relative;width:30px;
+}
 .msg-avatar{
   width:30px;height:30px;border-radius:10px;flex-shrink:0;
   display:grid;place-items:center;margin-top:2px;font-size:0;
 }
-.msg-avatar::after{content:"";width:16px;height:16px;background:currentColor}
+.msg-avatar::after{content:"";width:15px;height:15px;background:currentColor}
 .msg-avatar.ai{
   color:#fff;background:linear-gradient(140deg,var(--accent),var(--accent-2));
   box-shadow:0 3px 10px var(--accent-glow);
@@ -466,7 +481,9 @@ svg{display:block;flex:none}
 .msg-avatar.user{color:var(--text2);background:var(--surface2);border:1px solid var(--border)}
 .msg-avatar.user::after{-webkit-mask:var(--ic-user) center/contain no-repeat;mask:var(--ic-user) center/contain no-repeat}
 
+/* prompt'a aktar → mesajın ALT hizasında */
 .msg-use-btn{
+  position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
   width:26px;height:26px;border-radius:8px;
   background:var(--surface2);border:1px solid transparent;color:var(--text3);
@@ -679,18 +696,22 @@ svg{display:block;flex:none}
 .msg-expand-link svg{transition:transform var(--mid) var(--e)}
 .msg-expand-link.expanded svg{transform:rotate(180deg)}
 
+/* sistem bilgileri — mobil/masaüstü aynı boşluk */
 .sys-log{
   display:flex;align-items:center;justify-content:center;gap:8px;
   text-align:center;font-size:12.5px;color:var(--text3);
-  margin:6px auto 10px;max-width:var(--read);padding:2px 12px;
+  margin:0 auto 14px;max-width:var(--read);padding:0 12px;line-height:1.5;
 }
 .sys-log-action{
   display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
   text-align:center;font-size:12.5px;color:var(--text2);
-  margin:10px auto;padding:11px 16px;max-width:var(--read);
+  margin:0 auto 14px;padding:11px 16px;max-width:var(--read);
   background:var(--surface);border:1px solid var(--border);
   border-radius:var(--r3);box-shadow:var(--sh1);
 }
+.msg + .sys-log,.msg + .sys-log-action{margin-top:-12px}
+.sys-log + .sys-log{margin-top:-6px}
+body.hide-sys-logs .sys-log{display:none}
 .sys-btn{
   padding:6px 14px;border-radius:var(--pill);
   border:1px solid var(--accent);background:var(--accent-dim);
@@ -703,7 +724,7 @@ svg{display:block;flex:none}
 
 /* boş durum */
 .empty-state{
-  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:48px 20px;text-align:center;gap:14px;min-height:52vh;
   animation:rise .5s var(--e-out) both;
 }
@@ -737,16 +758,15 @@ svg{display:block;flex:none}
   transition:max-height var(--mid) var(--e),padding var(--mid) var(--e),margin var(--mid) var(--e);
 }
 .attachments-preview-container.has-items{
-  margin-bottom:9px;padding-bottom:11px;max-height:200px;
+  padding-bottom:11px;max-height:200px;
   border-bottom:1px solid var(--border);
 }
-.attachments-preview-container.has-items.has-scrollbar{max-height:200px;padding-bottom:11px}
 .attachments-preview{
   display:flex;flex-wrap:nowrap;gap:9px;
   overflow-x:auto !important;overflow-y:hidden;
   -webkit-overflow-scrolling:touch;padding-top:2px;padding-bottom:0;
 }
-.attachments-preview-container.has-scrollbar .attachments-preview{padding-bottom:14px}
+.attachments-preview-container.has-scrollbar .attachments-preview{padding-bottom:12px}
 .attachments-preview::-webkit-scrollbar{height:6px}
 .attachments-preview::-webkit-scrollbar-thumb{background:var(--border-2);border:none;border-radius:var(--pill)}
 .att-chip{
@@ -776,14 +796,16 @@ svg{display:block;flex:none}
   background:var(--glass);backdrop-filter:blur(20px) saturate(170%);
   -webkit-backdrop-filter:blur(20px) saturate(170%);
   border:1px solid var(--border);border-radius:var(--r4);
-  padding:12px 12px 9px;box-shadow:var(--sh2);
+  padding:10px 12px 9px;box-shadow:var(--sh2);
   transition:border-color var(--mid),box-shadow var(--mid);
 }
 .input-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-dim),var(--sh2)}
+/* dikey padding yok → scrollHeight ölçümü birebir; hayalet scroll yok */
 .input-box textarea{
   width:100%;background:none;border:none;outline:none;color:var(--text);
-  font-size:15px;line-height:1.55;resize:none;max-height:180px;overflow-y:auto;
-  padding:2px 4px;margin:0;display:block;min-height:21px;height:21px;
+  font-size:15px;line-height:22px;resize:none;
+  max-height:180px;overflow-y:hidden;
+  padding:0 4px;margin:0;display:block;min-height:22px;height:22px;
 }
 .input-box textarea::placeholder{color:var(--text3)}
 .input-box textarea:disabled{opacity:.6}
@@ -850,20 +872,34 @@ svg{display:block;flex:none}
 .model-picker-item svg{color:var(--accent);opacity:0}
 .model-picker-item.active svg{opacity:1}
 
+/* ── görsel modu satırı: üst boşluk = alt boşluk (10 / 10) ── */
 .image-config{
-  display:none;align-items:center;gap:9px;padding:2px 4px 8px;
-  font-size:12px;color:var(--text2);flex-wrap:wrap;
+  display:none;align-items:center;gap:8px;
+  padding:0 2px 10px;
   border-bottom:1px solid var(--border);
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
 }
+.image-config::-webkit-scrollbar{display:none}
 .image-config.active{display:flex}
-.image-config-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
-.image-config select{
-  background:var(--surface2);border:1px solid var(--border);border-radius:9px;
-  color:var(--text);font-size:12px;padding:5px 9px;outline:none;cursor:pointer;
-  transition:border-color var(--fast);
+.image-config-label{
+  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text3);flex:none;white-space:nowrap;line-height:32px;
 }
-.image-config select:hover{border-color:var(--border-2)}
-.image-config select:focus{border-color:var(--accent)}
+.image-config select{
+  flex:none;appearance:none;-webkit-appearance:none;
+  height:32px;padding:0 30px 0 11px;border-radius:10px;
+  background-color:var(--surface2);
+  background-image:var(--chev);
+  background-repeat:no-repeat;background-position:right 10px center;background-size:11px 11px;
+  border:1px solid var(--border);color:var(--text2);
+  font-size:12.5px;font-weight:550;line-height:30px;cursor:pointer;outline:none;
+  max-width:190px;text-overflow:ellipsis;
+  transition:background-color var(--fast),color var(--fast),border-color var(--fast),box-shadow var(--fast);
+}
+.image-config select:hover{color:var(--text);border-color:var(--border-2)}
+.image-config select:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);outline:none}
+.image-config select option{background:var(--surface);color:var(--text)}
 
 /* ─────────── 10. MODAL / TOAST ─────────── */
 .modal-overlay{
@@ -904,7 +940,7 @@ svg{display:block;flex:none}
 .btn-secondary:hover{background:var(--surface3);color:var(--text)}
 
 .toast-wrap{
-  position:fixed;top:18px;right:18px;z-index:300;
+  position:fixed;top:18px;right:18px;left:auto;z-index:300;
   display:flex;flex-direction:column;align-items:flex-end;gap:9px;pointer-events:none;
 }
 .toast{
@@ -955,8 +991,10 @@ svg{display:block;flex:none}
   .app{flex-direction:column;height:100dvh}
   .chat-area{flex:1;min-height:0;display:flex;flex-direction:column}
   .messages{flex:1;min-height:0;overflow:hidden;padding:4px 0 0}
+  .messages-scroll{scrollbar-gutter:auto}
   .messages-inner{padding:12px 14px 32px}
   .input-area{padding:0 12px calc(env(safe-area-inset-bottom,0px) + 12px);flex-shrink:0}
+  .input-box textarea{font-size:16px;line-height:23px;min-height:23px;height:23px}
   .msg-body{max-width:100%}
   .msg{gap:10px}
   .msg-images img{max-width:min(200px,60vw)}
@@ -964,10 +1002,14 @@ svg{display:block;flex:none}
   .att-chip.msg-att img,.att-chip.msg-att .att-chip-fallback{height:120px}
   .setup-card{padding:32px 24px}
   .modal{padding:24px 20px}
-  .model-picker-btn{max-width:118px}
-  .settings-popup{right:12px;top:56px;min-width:230px}
-  .toast-wrap{top:12px;right:12px;left:12px;align-items:stretch}
-  .toast{max-width:none}
+  .model-picker-btn{max-width:110px}
+  .settings-popup{right:12px;top:56px;min-width:236px}
+  .image-config select{max-width:150px}
+  /* bildirimler mobilde de sağda kalsın */
+  .toast-wrap{top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;left:auto;align-items:flex-end}
+  .toast{max-width:min(78vw,300px)}
+  .sys-log,.sys-log-action{margin-bottom:14px}
+  .msg + .sys-log,.msg + .sys-log-action{margin-top:-14px}
 }
 
 @media(prefers-reduced-motion:reduce){
@@ -1006,7 +1048,7 @@ svg{display:block;flex:none}
     <div class="sidebar-section">Sohbet</div>
     <div style="padding:0 10px">
       <button class="sidebar-btn sidebar-new" onclick="newChat()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
         Yeni Sohbet
       </button>
     </div>
@@ -1025,14 +1067,14 @@ svg{display:block;flex:none}
           <span class="account-dot" id="accountDot"></span><span class="account-email-text">Yükleniyor...</span>
         </div>
         <button class="account-create-btn" id="createAccountBtn" onclick="quickCreateAccount()" title="Giriş Yap">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3.5h3A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5h-3"/><path d="m10.5 16.5 4.5-4.5-4.5-4.5"/><path d="M15 12H3.5"/></svg>
         </button>
       </div>
     </div>
 
     <div class="sidebar-footer">
       <button class="sidebar-btn danger" onclick="logout()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5H6A2.5 2.5 0 0 0 3.5 6v12A2.5 2.5 0 0 0 6 20.5h3"/><path d="m16 16.5 4.5-4.5L16 7.5"/><path d="M20.5 12H9"/></svg>
         Çıkış Yap
       </button>
     </div>
@@ -1042,7 +1084,7 @@ svg{display:block;flex:none}
   <main class="chat-area">
     <div class="chat-header" id="chatHeader">
       <button class="hamburger" onclick="openSidebar()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
       </button>
       <div class="topbar-titles">
         <div class="topbar-title">Use AI</div>
@@ -1050,24 +1092,24 @@ svg{display:block;flex:none}
       </div>
       <div class="chat-header-right">
         <button class="icon-btn" id="downloadBtn" title="Sohbeti İndir" onclick="toggleDownloadMenu(event)">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4.5 19.5h15"/></svg>
         </button>
         <div class="download-menu" id="downloadMenu">
           <button onclick="downloadChat('html')">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 4-6-4-6"/><path d="m8 6-4 6 4 6"/></svg>
             HTML olarak indir
           </button>
           <button onclick="downloadChat('txt')">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2.5H7A2.5 2.5 0 0 0 4.5 5v14A2.5 2.5 0 0 0 7 21.5h10a2.5 2.5 0 0 0 2.5-2.5V7.5z"/><path d="M14.5 2.5v5h5"/><path d="M8.5 13h7"/><path d="M8.5 17h5"/></svg>
             TXT olarak indir
           </button>
           <button onclick="downloadChat('json')">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2.5H7A2.5 2.5 0 0 0 4.5 5v14A2.5 2.5 0 0 0 7 21.5h10a2.5 2.5 0 0 0 2.5-2.5V7.5z"/><path d="M14.5 2.5v5h5"/></svg>
             JSON olarak indir
           </button>
         </div>
         <button class="icon-btn" id="settingsBtn" title="Ayarlar" onclick="toggleSettingsPopup(event)">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h4.2"/><path d="M13.2 7.5H20"/><circle cx="10.7" cy="7.5" r="2.5"/><path d="M4 16.5h6.8"/><path d="M15.8 16.5H20"/><circle cx="13.3" cy="16.5" r="2.5"/></svg>
         </button>
       </div>
     </div>
@@ -1075,12 +1117,30 @@ svg{display:block;flex:none}
     <!-- SETTINGS POPUP -->
     <div class="settings-popup" id="settingsPopup">
       <div class="settings-popup-title">Ayarlar</div>
+
       <div class="settings-section-label">Tema</div>
       <button class="settings-row-btn" onclick="toggleTheme()">
-        <svg id="settingsThemeIconMoon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <svg id="settingsThemeIconSun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="settingsThemeIconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.4A8.6 8.6 0 0 1 10.6 3.5a8.6 8.6 0 1 0 9.9 9.9z"/></svg>
+        <svg id="settingsThemeIconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2"/><path d="M12 19.5v2"/><path d="M4.9 4.9l1.4 1.4"/><path d="M17.7 17.7l1.4 1.4"/><path d="M2.5 12h2"/><path d="M19.5 12h2"/><path d="M4.9 19.1l1.4-1.4"/><path d="M17.7 6.3l1.4-1.4"/></svg>
         <span id="settingsThemeLabel">Karanlık Mod</span>
       </button>
+
+      <div class="settings-section-label">Sohbet</div>
+      <div class="settings-row">
+        <span class="settings-row-text">Bilgi mesajları</span>
+        <label class="switch">
+          <input type="checkbox" id="sysLogToggle" onchange="saveSysLogPref()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <span class="settings-row-text">Uzun mesajları kısalt</span>
+        <label class="switch">
+          <input type="checkbox" id="collapseToggle" onchange="saveCollapsePref()">
+          <span class="slider"></span>
+        </label>
+      </div>
+
       <div class="settings-section-label">Kaydırma</div>
       <div class="settings-row">
         <span class="settings-row-text">Otomatik Kaydır</span>
@@ -1089,6 +1149,7 @@ svg{display:block;flex:none}
           <span class="slider"></span>
         </label>
       </div>
+
       <div class="settings-section-label">Otomatik Mod</div>
       <div class="settings-row">
         <span class="settings-row-text">Otomatik Giriş</span>
@@ -1101,21 +1162,23 @@ svg{display:block;flex:none}
 
     <!-- MESSAGES -->
     <div class="messages" id="messages">
-      <div class="messages-inner" id="messagesInner">
-        <div class="empty-state" id="emptyState">
-          <div class="empty-orb"></div>
-          <h3>Nasıl yardımcı olabilirim?</h3>
-          <p>Bir şeyler yaz, hemen cevap vereyim.</p>
-          <div class="empty-chips">
-            <button class="empty-chip" onclick="useSuggestion(this)">Bir konuyu basitçe açıkla</button>
-            <button class="empty-chip" onclick="useSuggestion(this)">Kodumdaki hatayı bul</button>
-            <button class="empty-chip" onclick="useSuggestion(this)">Metnimi düzenle</button>
-            <button class="empty-chip" onclick="useSuggestion(this)">Bana bir plan çıkar</button>
+      <div class="messages-scroll" id="messagesScroll">
+        <div class="messages-inner" id="messagesInner">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-orb"></div>
+            <h3>Nasıl yardımcı olabilirim?</h3>
+            <p>Bir şeyler yaz, hemen cevap vereyim.</p>
+            <div class="empty-chips">
+              <button class="empty-chip" onclick="useSuggestion(this)">Bir konuyu basitçe açıkla</button>
+              <button class="empty-chip" onclick="useSuggestion(this)">Kodumdaki hatayı bul</button>
+              <button class="empty-chip" onclick="useSuggestion(this)">Metnimi düzenle</button>
+              <button class="empty-chip" onclick="useSuggestion(this)">Bana bir plan çıkar</button>
+            </div>
           </div>
         </div>
       </div>
       <button class="scroll-bottom-btn" id="scrollBottomBtn" title="En aşağı in" onclick="scrollBottom(true)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15"/><path d="m5.5 13 6.5 6.5 6.5-6.5"/></svg>
       </button>
     </div>
 
@@ -1134,31 +1197,31 @@ svg{display:block;flex:none}
             <select id="aspectRatioSelect" onchange="S.aspectRatio=this.value;fetch('/api/toggle_feature',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:'aspect_ratio',value:this.value})})"></select>
           </div>
 
-          <textarea id="msgInput" placeholder="Mesajınızı yazın..."
+          <textarea id="msgInput" placeholder="Mesajınızı yazın..." rows="1"
             onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
 
           <div class="input-actions">
             <input type="file" id="fileInput" style="display:none" multiple onchange="handleFiles(this)">
             <button class="icon-btn" title="Dosya ekle" onclick="document.getElementById('fileInput').click()" id="attachBtn">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.9 11.6 12 20.4a5.6 5.6 0 0 1-7.9-7.9l8.8-8.8a3.7 3.7 0 0 1 5.3 5.3l-8.8 8.8a1.9 1.9 0 0 1-2.6-2.6l8.1-8.1"/></svg>
             </button>
             <button class="icon-btn" id="webSearchBtn" title="Web Araması" onclick="toggleWebSearch()">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.8"/><ellipse cx="12" cy="12" rx="3.9" ry="8.8"/><path d="M3.6 9.2h16.8"/><path d="M3.6 14.8h16.8"/></svg>
             </button>
             <button class="icon-btn" id="imageModeBtn" title="Görsel Oluştur" onclick="toggleImageMode()">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="4.2"/><circle cx="9" cy="9" r="1.5"/><path d="m3.6 17.6 4.2-4.2a2 2 0 0 1 2.8 0l3.4 3.4"/><path d="m14.3 15 1.5-1.5a2 2 0 0 1 2.8 0l2.2 2.2"/></svg>
             </button>
 
             <div class="input-actions-right">
               <div class="model-picker" id="modelPicker">
                 <button class="model-picker-btn" onclick="toggleModelPicker(event)" title="Model seç">
                   <span id="modelPickerLabel">Model</span>
-                  <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+                  <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="model-picker-menu" id="modelPickerMenu"></div>
               </div>
               <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Gönder">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19.5V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></svg>
               </button>
             </div>
           </div>
@@ -1235,8 +1298,12 @@ const EMPTY_STATE_HTML = `
     </div>
   </div>`;
 
-const ICON_COPY  = '<svg class="ic-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-const ICON_CHECK = '<svg class="ic-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const ICON_COPY  = '<svg class="ic-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="2.6"/><path d="M5.5 15H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h8.5A1.5 1.5 0 0 1 15 5v.5"/></svg>';
+const ICON_CHECK = '<svg class="ic-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>';
+
+const ICON_SEND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19.5V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></svg>';
+const ICON_STOP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2.6"/></svg>';
+const ICON_SPIN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:spin 1s linear infinite;transform-origin:center"><circle cx="12" cy="12" r="9" stroke-dasharray="32 10" fill="none"/></svg>';
 
 function useSuggestion(el) {
   const input = document.getElementById('msgInput');
@@ -1260,7 +1327,6 @@ function setUrlConvId(convId) {
   window.history.pushState({convId}, '', url.toString());
 }
 
-// Handle browser back/forward
 window.addEventListener('popstate', async (e) => {
   const convId = (e.state && e.state.convId) || getUrlConvId();
   if (convId && document.getElementById('app').style.display !== 'none') {
@@ -1284,9 +1350,7 @@ async function boot() {
   S.aspectRatio = arData.default || '';
 
   renderImageConfig();
-
-  const ta = document.getElementById('msgInput');
-  ta.style.height = '21px';
+  autoResize(document.getElementById('msgInput'));
 
   const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
   if (st && st.initialized) {
@@ -1331,7 +1395,7 @@ function renderModelPicker() {
     }
     html += `<div class="model-picker-item${m.id === S.model ? ' active' : ''}" onclick="selectModel('${escHtml(m.id)}')">
       <span>${escHtml(m.label)}</span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6.5-11 11-5-5"/></svg>
     </div>`;
   });
   menu.innerHTML = html;
@@ -1395,6 +1459,7 @@ async function initSession() {
       enterApp();
       updateSidebar();
       clearMessages();
+      autoResize(document.getElementById('msgInput'));
     } else {
       status.className = 'setup-status error';
       status.textContent = d.error || 'Bir hata oluştu.';
@@ -1463,11 +1528,11 @@ function renderConversationList(convs, activeConvId) {
     const isActive = cid === activeConvId || String(c.idx) === activeConvId;
     return `
     <div class="conv-item${isActive ? ' active' : ''}" data-conv-id="${escHtml(cid)}">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" onclick="loadConversationById('${escHtml(cid)}')"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" onclick="loadConversationById('${escHtml(cid)}')"><path d="M20.5 15a2.5 2.5 0 0 1-2.5 2.5H8.5L4.5 21V6.5A2.5 2.5 0 0 1 7 4h11a2.5 2.5 0 0 1 2.5 2.5z"/></svg>
       <span class="conv-item-title" onclick="loadConversationById('${escHtml(cid)}')">${escHtml(c.title)}</span>
       <span class="conv-item-count" onclick="loadConversationById('${escHtml(cid)}')">${c.count}</span>
       <button class="conv-item-menu-btn" onclick="toggleConvMenu(event, '${escHtml(cid)}')" title="Seçenekler">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
       </button>
     </div>
   `}).join('');
@@ -1488,11 +1553,11 @@ function toggleConvMenu(e, convId) {
   menu.className = 'conv-menu';
   menu.innerHTML = `
     <button onclick="startRenameConv(event, '${escHtml(convId)}')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 20.5H21"/><path d="M16.8 3.7a2.1 2.1 0 0 1 3 3L8.5 18l-4.1 1.1L5.5 15z"/></svg>
       Yeniden Adlandır
     </button>
     <button class="danger" onclick="deleteConv(event, '${escHtml(convId)}')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11.5v6"/><path d="M14 11.5v6"/><path d="M6.5 7l.9 12a2 2 0 0 0 2 1.9h5.2a2 2 0 0 0 2-1.9l.9-12"/><path d="M9.5 7V5.3a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3V7"/></svg>
       Sil
     </button>
   `;
@@ -1610,7 +1675,7 @@ function escHtml(str) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── SUNUCU İLE UZLAŞTIRMA (0 veri kaybı) ─────────────────────────────
+// ─── SUNUCU İLE UZLAŞTIRMA ────────────────────────────────────────────
 async function fetchServerHistory() {
   try {
     const r = await fetch('/api/history');
@@ -2068,7 +2133,7 @@ function appendMessage(role, text, images=[], streaming=false) {
     <div class="msg-avatar-col">
       <div class="msg-avatar ${roleClass}"></div>
       <button class="msg-use-btn" title="Prompt'a aktar" onclick="useInPrompt(this)">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5v6a4 4 0 0 0 4 4h12"/><path d="m15.5 10 4.5 4.5-4.5 4.5"/></svg>
       </button>
     </div>
     <div class="msg-body">
@@ -2158,15 +2223,33 @@ function renderMarkdown(el, text, streaming=false) {
   if (!streaming) applyCollapseIfLong(el);
 }
 
-// ─── LONG MESSAGE COLLAPSE ────────────────────────────────────────────
+// ─── UZUN MESAJ KISALTMA (ayarlardan kapatılabilir) ───────────────────
 const COLLAPSE_THRESHOLD = 480;
+
+function isCollapseOn() {
+  const t = document.getElementById('collapseToggle');
+  return t ? t.checked : true;
+}
+
+function saveCollapsePref() {
+  localStorage.setItem('ua-collapse', isCollapseOn() ? '1' : '0');
+  reapplyCollapseAll();
+}
+
+function reapplyCollapseAll() {
+  document.querySelectorAll('#messagesInner .msg-text').forEach(el => applyCollapseIfLong(el));
+}
 
 function applyCollapseIfLong(el) {
   el.classList.remove('collapsible');
+  el.dataset.collapsed = '0';
   const existingBtn = el.parentElement && el.parentElement.querySelector('.msg-expand-link');
   if (existingBtn) existingBtn.remove();
 
+  if (!isCollapseOn()) return;
+
   requestAnimationFrame(() => {
+    if (!isCollapseOn()) return;
     const fullHeight = el.scrollHeight;
     if (fullHeight <= COLLAPSE_THRESHOLD + 40) return;
 
@@ -2175,7 +2258,7 @@ function applyCollapseIfLong(el) {
 
     const btn = document.createElement('button');
     btn.className = 'msg-expand-link';
-    btn.innerHTML = `<span>Daha fazlasını göster</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+    btn.innerHTML = `<span>Daha fazlasını göster</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>`;
     btn.onclick = () => toggleMsgExpand(btn, el);
     el.insertAdjacentElement('afterend', btn);
   });
@@ -2197,8 +2280,9 @@ function toggleMsgExpand(btn, el) {
   }
 }
 
+// ─── SCROLL ───────────────────────────────────────────────────────────
 function getMessagesScrollEl() {
-  return document.getElementById('messagesInner') || document.getElementById('messages');
+  return document.getElementById('messagesScroll');
 }
 
 function scrollBottom(force=false) {
@@ -2207,8 +2291,7 @@ function scrollBottom(force=false) {
   if (!force && !isAutoScroll()) return;
 
   const doScroll = () => {
-    const target = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollTop = target;
+    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
   };
 
   requestAnimationFrame(() => {
@@ -2218,7 +2301,6 @@ function scrollBottom(force=false) {
   });
 }
 
-// ─── SCROLL-TO-BOTTOM ─────────────────────────────────────────────────
 const SCROLL_BOTTOM_SLOP = 80;
 
 function isNearBottom(el) {
@@ -2230,8 +2312,7 @@ function updateScrollBottomBtn() {
   const btn = document.getElementById('scrollBottomBtn');
   if (!el || !btn) return;
   const scrollable = el.scrollHeight - el.clientHeight > 40;
-  const shouldShow = scrollable && !isNearBottom(el);
-  btn.classList.toggle('show', shouldShow);
+  btn.classList.toggle('show', scrollable && !isNearBottom(el));
 }
 
 function initScrollBottomWatcher() {
@@ -2283,8 +2364,7 @@ function renderAttachPreview() {
   const atts = S.pendingAtts;
   if (!atts.length) {
     prev.innerHTML = '';
-    container.classList.remove('has-items');
-    container.classList.remove('has-scrollbar');
+    container.classList.remove('has-items','has-scrollbar');
     scrollBottom(true);
     return;
   }
@@ -2304,11 +2384,7 @@ function renderAttachPreview() {
 
   const isMobile = window.innerWidth <= 768;
   const hasScroll = isMobile ? (atts.length > 5) : (atts.length > 9);
-  if (hasScroll) {
-    container.classList.add('has-scrollbar');
-  } else {
-    container.classList.remove('has-scrollbar');
-  }
+  container.classList.toggle('has-scrollbar', hasScroll);
 
   scrollBottom(true);
 }
@@ -2364,6 +2440,7 @@ async function newChat() {
 
 function clearMessages() {
   document.getElementById('messagesInner').innerHTML = EMPTY_STATE_HTML;
+  requestAnimationFrame(updateScrollBottomBtn);
 }
 
 // ─── RESET ─────────────────────────────────────────────────────────────
@@ -2411,11 +2488,9 @@ async function doReset(carry, modalId, btnId) {
       closeModal(modalId);
       updateSidebar();
 
-      if (d.new_conv_id) {
-        S.activeConvId = d.new_conv_id;
-      }
+      if (d.new_conv_id) S.activeConvId = d.new_conv_id;
       await refreshConversations();
-      toast(`Hesap değiştirildi`, 'success');
+      toast('Hesap değiştirildi', 'success');
     } else {
       toast(d.error || 'Sıfırlama başarısız', 'error');
     }
@@ -2431,10 +2506,10 @@ async function doReset(carry, modalId, btnId) {
 // ─── QUICK CREATE ACCOUNT ─────────────────────────────────────────────
 async function quickCreateAccount() {
   const btn = document.getElementById('createAccountBtn');
+  const originalIcon = btn.innerHTML;
   btn.disabled = true;
   btn.classList.add('spinning');
-  const originalIcon = btn.innerHTML;
-  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
 
   try {
     const r = await fetch('/api/reset', {
@@ -2449,7 +2524,7 @@ async function quickCreateAccount() {
       S.accountCreated = true;
       updateSidebar();
       await refreshConversations();
-      toast(`Giriş yapıldı`, 'success');
+      toast('Giriş yapıldı', 'success');
     } else {
       toast(d.error || 'Giriş yapılamadı', 'error');
     }
@@ -2492,9 +2567,7 @@ function showConfirmModal({
 
   modal.style.display = 'flex';
 
-  return new Promise(resolve => {
-    confirmModalResolver = resolve;
-  });
+  return new Promise(resolve => { confirmModalResolver = resolve; });
 }
 
 function closeConfirmModal(confirmed) {
@@ -2507,14 +2580,12 @@ function closeConfirmModal(confirmed) {
   }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') {
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
   const confirmModal = document.getElementById('confirmModal');
-  if (confirmModal && confirmModal.style.display === 'flex') {
-    closeConfirmModal(false);
-  } else {
-    closeModal('creditModal');
-  }
-}});
+  if (confirmModal && confirmModal.style.display === 'flex') closeConfirmModal(false);
+  else closeModal('creditModal');
+});
 
 // ─── SIDEBAR (mobile) ─────────────────────────────────────────────────
 function openSidebar() {
@@ -2543,11 +2614,15 @@ function toast(msg, type='') {
   msgEl.textContent = cleanMsg;
   el.appendChild(msgEl);
   wrap.appendChild(el);
-  setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateX(20px)'; el.style.transition='all .3s';
-    setTimeout(()=>el.remove(), 300); }, 3000);
+  setTimeout(()=>{
+    el.style.opacity='0';
+    el.style.transform='translateX(20px)';
+    el.style.transition='all .3s';
+    setTimeout(()=>el.remove(), 300);
+  }, 3000);
 }
 
-// ─── UTILS ────────────────────────────────────────────────────────────
+// ─── SEND BUTTON STATES ───────────────────────────────────────────────
 function setSendDisabled(d) {
   const attachBtn = document.getElementById('attachBtn');
   const sendBtn = document.getElementById('sendBtn');
@@ -2555,53 +2630,46 @@ function setSendDisabled(d) {
 
   if (S.stopping) {
     if (attachBtn) attachBtn.disabled = true;
-    if (msgInput) {
-      msgInput.disabled = true;
-      msgInput.placeholder = 'Durduruluyor...';
-    }
+    if (msgInput) { msgInput.disabled = true; msgInput.placeholder = 'Durduruluyor...'; }
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.title = 'Durduruluyor...';
       sendBtn.setAttribute('aria-label', 'Durduruluyor...');
-      sendBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation: spin 1s linear infinite; transform-origin: center;">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="32 10" fill="none" />
-      </svg>`;
+      sendBtn.innerHTML = ICON_SPIN;
     }
   } else if (d) {
     if (attachBtn) attachBtn.disabled = true;
-    if (msgInput) {
-      msgInput.disabled = false;
-      msgInput.placeholder = 'Mesajınızı yazın...';
-    }
+    if (msgInput) { msgInput.disabled = false; msgInput.placeholder = 'Mesajınızı yazın...'; }
     if (sendBtn) {
       sendBtn.disabled = false;
       sendBtn.title = 'Durdur';
       sendBtn.setAttribute('aria-label', 'Durdur');
-      sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>';
+      sendBtn.innerHTML = ICON_STOP;
     }
   } else {
     if (attachBtn) attachBtn.disabled = false;
-    if (msgInput) {
-      msgInput.disabled = false;
-      msgInput.placeholder = 'Mesajınızı yazın...';
-    }
+    if (msgInput) { msgInput.disabled = false; msgInput.placeholder = 'Mesajınızı yazın...'; }
     if (sendBtn) {
       sendBtn.disabled = false;
       sendBtn.title = 'Gönder';
       sendBtn.setAttribute('aria-label', 'Gönder');
-      sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+      sendBtn.innerHTML = ICON_SEND;
     }
   }
 }
 
+// ─── TEXTAREA AUTOSIZE (hayalet scroll yok) ───────────────────────────
 function autoResize(el) {
-  el.style.height = '21px';
-  void el.offsetHeight;
-  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+  if (!el) return;
+  el.style.height = 'auto';
+  const full = el.scrollHeight;
+  const h = Math.min(full, 180);
+  el.style.height = h + 'px';
+  el.style.overflowY = full > 180 ? 'auto' : 'hidden';
 }
+
 window.addEventListener('resize', () => {
-  const ta = document.getElementById('msgInput');
-  if (ta) autoResize(ta);
+  autoResize(document.getElementById('msgInput'));
   renderAttachPreview();
 });
 
@@ -2623,17 +2691,16 @@ function applyTheme(dark) {
   document.getElementById('hljs-light').disabled = dark;
   document.getElementById('hljs-dark').disabled = !dark;
   localStorage.setItem('ua-theme', dark ? 'dark' : 'light');
-  const moon2 = document.getElementById('settingsThemeIconMoon');
-  const sun2 = document.getElementById('settingsThemeIconSun');
-  const lbl2 = document.getElementById('settingsThemeLabel');
-  if (moon2) moon2.style.display = dark ? 'none' : '';
-  if (sun2) sun2.style.display = dark ? '' : 'none';
-  if (lbl2) lbl2.textContent = dark ? 'Aydınlık Mod' : 'Karanlık Mod';
+  const moon = document.getElementById('settingsThemeIconMoon');
+  const sun = document.getElementById('settingsThemeIconSun');
+  const lbl = document.getElementById('settingsThemeLabel');
+  if (moon) moon.style.display = dark ? 'none' : '';
+  if (sun) sun.style.display = dark ? '' : 'none';
+  if (lbl) lbl.textContent = dark ? 'Aydınlık Mod' : 'Karanlık Mod';
 }
 
 function toggleTheme() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  applyTheme(!isDark);
+  applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
 }
 
 (function() {
@@ -2642,35 +2709,48 @@ function toggleTheme() {
   applyTheme(saved ? saved === 'dark' : prefersDark);
 })();
 
-// ─── AUTO MODE ────────────────────────────────────────────────────────
+// ─── AYAR TERCİHLERİ ──────────────────────────────────────────────────
 function isAutoMode() {
   const t = document.getElementById('autoModeToggle');
   return t ? t.checked : false;
 }
-
 function saveAutoMode() {
   localStorage.setItem('ua-auto-mode', isAutoMode() ? '1' : '0');
 }
 
-(function() {
-  const saved = localStorage.getItem('ua-auto-mode');
-  if (saved === '1') {
-    document.getElementById('autoModeToggle').checked = true;
-  }
-})();
+function isAutoScroll() {
+  const t = document.getElementById('autoScrollToggle');
+  return t ? t.checked : true;
+}
+function saveAutoScroll() {
+  localStorage.setItem('ua-auto-scroll', isAutoScroll() ? '1' : '0');
+}
 
-(function() {
-  const saved = localStorage.getItem('ua-auto-scroll');
-  function applyAutoScroll() {
-    const t = document.getElementById('autoScrollToggle');
-    if (t) {
-      t.checked = (saved === null || saved === '1');
-    } else {
-      setTimeout(applyAutoScroll, 50);
-    }
-  }
-  applyAutoScroll();
-})();
+function isSysLogOn() {
+  const t = document.getElementById('sysLogToggle');
+  return t ? t.checked : true;
+}
+function applySysLogPref() {
+  document.body.classList.toggle('hide-sys-logs', !isSysLogOn());
+}
+function saveSysLogPref() {
+  localStorage.setItem('ua-sys-logs', isSysLogOn() ? '1' : '0');
+  applySysLogPref();
+}
+
+function initPrefs() {
+  const onOff = (key, def=true) => {
+    const v = localStorage.getItem(key);
+    return v === null ? def : v === '1';
+  };
+  const set = (id, val) => { const t = document.getElementById(id); if (t) t.checked = val; };
+
+  set('autoModeToggle',  onOff('ua-auto-mode', false));
+  set('autoScrollToggle',onOff('ua-auto-scroll', true));
+  set('sysLogToggle',    onOff('ua-sys-logs', true));
+  set('collapseToggle',  onOff('ua-collapse', true));
+  applySysLogPref();
+}
 
 // ─── SYSTEM LOG ───────────────────────────────────────────────────────
 function addSystemLog(text) {
@@ -2713,15 +2793,14 @@ function addSystemLogWithAction(text, btnLabel, onClick) {
 
 // ─── MARK USER MSG FAILED ─────────────────────────────────────────────
 function markUserMsgFailed() {
-  const inner = document.getElementById('messagesInner');
-  const msgs = inner.querySelectorAll('.msg');
+  const msgs = document.querySelectorAll('#messagesInner .msg');
   for (let i = msgs.length - 1; i >= 0; i--) {
     const roleEl = msgs[i].querySelector('.msg-role.user');
     if (roleEl) {
       if (!roleEl.querySelector('.failed-badge')) {
         const badge = document.createElement('span');
         badge.className = 'failed-badge';
-        badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> gönderilemedi';
+        badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> gönderilemedi';
         roleEl.prepend(badge);
       }
       break;
@@ -2763,8 +2842,7 @@ async function doNewChatBackground(pendingMsg, pendingAtts) {
     S.msgCount = 0;
     S.activeConvIdx = null;
     S.activeConvId = d.new_conv_id || null;
-    if (S.activeConvId) setUrlConvId(S.activeConvId);
-    else setUrlConvId(null);
+    setUrlConvId(S.activeConvId || null);
     await refreshConversations();
     addSystemLog('✓ Yeni konuşma hazır — mesajınızı göndermek için butona basın.');
     S.pendingAtts = pendingAtts || [];
@@ -2794,10 +2872,8 @@ async function doAutoNewChatBackground(pendingMsg, pendingAtts, reason='locked')
     S.msgCount = 0;
     S.activeConvIdx = null;
     S.activeConvId = d.new_conv_id || null;
-    if (S.activeConvId) setUrlConvId(S.activeConvId);
-    else setUrlConvId(null);
+    setUrlConvId(S.activeConvId || null);
     await refreshConversations();
-
     await loadHistory();
 
     if (reason === 'locked') {
@@ -2817,7 +2893,7 @@ async function doAutoNewChatBackground(pendingMsg, pendingAtts, reason='locked')
     S.streaming = false;
     setSendDisabled(false);
     await sendMessage();
-    } catch(e) {
+  } catch(e) {
     addSystemLog('Yeni konuşma başlatılamadı: ' + e.message);
     restorePrompt(pendingMsg);
   }
@@ -2900,17 +2976,6 @@ async function doAutoNewAccount(pendingMsg, pendingAtts) {
   }
 }
 
-// ─── AUTO SCROLL ──────────────────────────────────────────────────────
-function isAutoScroll() {
-  const toggle = document.getElementById('autoScrollToggle');
-  return toggle ? toggle.checked : true;
-}
-
-function saveAutoScroll() {
-  localStorage.setItem('ua-auto-scroll', isAutoScroll() ? '1' : '0');
-  updateSettingsThemeIcons();
-}
-
 // ─── SETTINGS POPUP ────────────────────────────────────────────────────
 function toggleSettingsPopup(e) {
   e.stopPropagation();
@@ -2918,22 +2983,6 @@ function toggleSettingsPopup(e) {
   const dm = document.getElementById('downloadMenu');
   if (dm) dm.classList.remove('open');
   popup.classList.toggle('open');
-  if (popup.classList.contains('open')) updateSettingsThemeIcons();
-}
-
-function updateSettingsThemeIcons() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const moon = document.getElementById('settingsThemeIconMoon');
-  const sun = document.getElementById('settingsThemeIconSun');
-  const lbl = document.getElementById('settingsThemeLabel');
-  if (moon) moon.style.display = isDark ? 'none' : '';
-  if (sun) sun.style.display = isDark ? '' : 'none';
-  if (lbl) lbl.textContent = isDark ? 'Aydınlık Mod' : 'Karanlık Mod';
-  const t = document.getElementById('autoScrollToggle');
-  if (t) {
-    const saved = localStorage.getItem('ua-auto-scroll');
-    t.checked = (saved === null || saved === '1');
-  }
 }
 
 document.addEventListener('click', (e) => {
@@ -2966,10 +3015,9 @@ function getHistoryData() {
     const textEl = el.querySelector('.msg-text');
     if (!roleEl || !textEl) return;
     const isUser = roleEl.classList.contains('user');
-    const role = isUser ? 'user' : 'assistant';
     const text = (textEl.innerText || textEl.textContent || '').trim();
     const images = Array.from(el.querySelectorAll('.msg-images img, .msg-attachments img')).map(i => i.src);
-    result.push({ role, text, images });
+    result.push({ role: isUser ? 'user' : 'assistant', text, images });
   });
   return result;
 }
@@ -2989,12 +3037,8 @@ function downloadChat(format) {
   } else if (format === 'txt') {
     let txt = '';
     history.forEach((m, i) => {
-      const label = m.role === 'user' ? 'Sen' : 'Use AI';
-      txt += label + ':\n';
-      txt += m.text;
-      if (m.images && m.images.length) {
-        txt += '\n[' + m.images.length + ' görsel eklendi]';
-      }
+      txt += (m.role === 'user' ? 'Sen' : 'Use AI') + ':\n' + m.text;
+      if (m.images && m.images.length) txt += '\n[' + m.images.length + ' görsel eklendi]';
       if (i < history.length - 1) txt += '\n\n---\n\n';
     });
     triggerDownload(filename + '.txt', txt, 'text/plain;charset=utf-8');
@@ -3002,9 +3046,8 @@ function downloadChat(format) {
   } else if (format === 'html') {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-    // Iris paleti — ekrandaki tema ile birebir aynı
     const T = isDark ? {
-      bg:'#0a0b0f', surface:'#14161d', surface2:'#1b1e28', surface3:'#232733',
+      bg:'#0a0b0f', surface:'#14161d', surface2:'#1b1e28',
       border:'#252936', border2:'#333849', codeBg:'#0f1218', codeHead:'#171b24',
       accent:'#7d7df2', accentLight:'#a6a6ff', accent2:'#d946ef',
       accentDim:'rgba(125,125,242,.14)', accentGlow:'rgba(125,125,242,.28)',
@@ -3012,7 +3055,7 @@ function downloadChat(format) {
       userBg:'#191d2e', userBorder:'rgba(125,125,242,.24)',
       error:'#f87171', sh1:'0 1px 2px rgba(0,0,0,.5)'
     } : {
-      bg:'#fafafc', surface:'#ffffff', surface2:'#f1f2f8', surface3:'#e7e9f3',
+      bg:'#fafafc', surface:'#ffffff', surface2:'#f1f2f8',
       border:'#e4e6f0', border2:'#d2d7e6', codeBg:'#f7f8fc', codeHead:'#edeff7',
       accent:'#5b5bd6', accentLight:'#4f4fc4', accent2:'#c026d3',
       accentDim:'rgba(91,91,214,.09)', accentGlow:'rgba(91,91,214,.22)',
@@ -3025,10 +3068,9 @@ function downloadChat(format) {
       ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css'
       : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css';
 
-    // Etkileşimli parçaları temizlenmiş kopya
     const clone = document.getElementById('messagesInner').cloneNode(true);
     clone.removeAttribute('id');
-    clone.querySelectorAll('.copy-btn, .msg-use-btn, .scroll-bottom-btn, .msg-expand-link').forEach(n => n.remove());
+    clone.querySelectorAll('.copy-btn, .msg-use-btn, .msg-expand-link').forEach(n => n.remove());
     clone.querySelectorAll('.stream-cursor').forEach(n => n.remove());
     clone.querySelectorAll('.msg-text.collapsible').forEach(n => n.classList.remove('collapsible'));
     clone.querySelectorAll('.typing-indicator').forEach(n => {
@@ -3049,30 +3091,30 @@ function downloadChat(format) {
 :root{
   --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   --mono:'JetBrains Mono','SF Mono','Fira Code',ui-monospace,monospace;
-  --bg:${T.bg}; --surface:${T.surface}; --surface2:${T.surface2}; --surface3:${T.surface3};
+  --bg:${T.bg}; --surface:${T.surface}; --surface2:${T.surface2};
   --border:${T.border}; --border-2:${T.border2}; --code-bg:${T.codeBg}; --code-head:${T.codeHead};
   --accent:${T.accent}; --accent-light:${T.accentLight}; --accent-2:${T.accent2};
   --accent-dim:${T.accentDim}; --accent-glow:${T.accentGlow};
   --text:${T.text}; --text2:${T.text2}; --text3:${T.text3};
   --user-bg:${T.userBg}; --user-border:${T.userBorder}; --error:${T.error};
   --r1:8px; --r2:12px; --r3:16px; --pill:999px; --sh1:${T.sh1};
-  --ic-spark:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z'/%3E%3Cpath d='M19 3.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6L16.8 5.7l1.6-.6z'/%3E%3C/svg%3E");
-  --ic-user:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
-  --ic-file:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
+  --ic-spark:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 1.8c.52 5.42 4.26 9.16 9.68 9.68v1.04c-5.42.52-9.16 4.26-9.68 9.68h-1.04c-.52-5.42-4.26-9.16-9.68-9.68v-1.04c5.42-.52 9.16-4.26 9.68-9.68z'/%3E%3C/svg%3E");
+  --ic-user:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20.5c0-3.3-3.6-5.5-8-5.5s-8 2.2-8 5.5'/%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3C/svg%3E");
+  --ic-file:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 2.5H7A2.5 2.5 0 0 0 4.5 5v14A2.5 2.5 0 0 0 7 21.5h10a2.5 2.5 0 0 0 2.5-2.5V7.5z'/%3E%3Cpath d='M14.5 2.5v5h5'/%3E%3C/svg%3E");
 }
 html,body{min-height:100%;background:var(--bg);color:var(--text)}
 body{font-family:var(--font);font-size:14.5px;line-height:1.62;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
 .export-shell{max-width:768px;margin:0 auto;padding:32px 24px 64px}
 .export-head{display:flex;align-items:center;gap:12px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border)}
 .export-mark{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--accent),var(--accent-2));box-shadow:0 4px 14px var(--accent-glow)}
-.export-mark::after{content:"";width:20px;height:20px;background:currentColor;-webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat}
+.export-mark::after{content:"";width:19px;height:19px;background:currentColor;-webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat}
 .export-head h1{font-size:18px;font-weight:650;letter-spacing:-.025em}
 .export-head p{font-size:12px;color:var(--text2);margin-top:2px}
 
 .msg{display:flex;gap:13px;padding:4px 0 28px;min-width:0}
 .msg-avatar-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
 .msg-avatar{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;margin-top:2px;font-size:0}
-.msg-avatar::after{content:"";width:16px;height:16px;background:currentColor}
+.msg-avatar::after{content:"";width:15px;height:15px;background:currentColor}
 .msg-avatar.ai{color:#fff;background:linear-gradient(140deg,var(--accent),var(--accent-2))}
 .msg-avatar.ai::after{-webkit-mask:var(--ic-spark) center/contain no-repeat;mask:var(--ic-spark) center/contain no-repeat}
 .msg-avatar.user{color:var(--text2);background:var(--surface2);border:1px solid var(--border)}
@@ -3127,8 +3169,9 @@ body{font-family:var(--font);font-size:14.5px;line-height:1.62;letter-spacing:-.
 .att-chip-name{font-size:9.5px;color:var(--text2);padding:5px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .att-chip-fallback{width:100%;height:160px;display:grid;place-items:center;background:var(--surface2);color:var(--text3);font-size:0}
 .att-chip-fallback::after{content:"";width:30px;height:30px;background:currentColor;-webkit-mask:var(--ic-file) center/contain no-repeat;mask:var(--ic-file) center/contain no-repeat}
-.sys-log{text-align:center;font-size:12.5px;color:var(--text3);margin:6px auto 10px;padding:2px 12px}
-.sys-log-action{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;font-size:12.5px;color:var(--text2);margin:10px auto;padding:11px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r3)}
+.sys-log{text-align:center;font-size:12.5px;color:var(--text3);margin:0 auto 14px;padding:0 12px}
+.sys-log-action{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;font-size:12.5px;color:var(--text2);margin:0 auto 14px;padding:11px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r3)}
+.msg + .sys-log,.msg + .sys-log-action{margin-top:-12px}
 .sys-btn{display:none}
 .image-status{display:inline-flex;align-items:center;font-size:13px;color:var(--text2);margin:8px 0;padding:7px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--pill)}
 .empty-state,.empty-chips,.scroll-bottom-btn{display:none}
@@ -3198,7 +3241,6 @@ function toggleImageMode() {
   toast(S.imageMode ? 'Görsel modu açık' : 'Görsel modu kapalı', S.imageMode ? 'success' : '');
 }
 
-// Aktif durum artık inline style yerine .on sınıfıyla — tema değişiminde de doğru kalıyor
 function updateWebSearchUI() {
   const btn = document.getElementById('webSearchBtn');
   if (btn) btn.classList.toggle('on', S.webSearch);
@@ -3209,6 +3251,7 @@ function updateImageModeUI() {
   if (btn) btn.classList.toggle('on', S.imageMode);
   const cfg = document.getElementById('imageConfig');
   if (cfg) cfg.classList.toggle('active', S.imageMode);
+  scrollBottom(true);
 }
 
 function renderImageConfig() {
@@ -3238,8 +3281,10 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 // ─── BOOT ─────────────────────────────────────────────────────────────
+initPrefs();
 boot();
 initScrollBottomWatcher();
 </script>
 </body>
 </html>
+
