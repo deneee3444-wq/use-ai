@@ -50,9 +50,9 @@ MODELS = {
         "Opus 4.8": "gateway-opus-4-8",
         "GPT-5.6 Sol": "gateway-gpt-5-6",
         "GPT-5.5": "gateway-gpt-5-5",
-        "Grok 4.3": "gateway-grok-4-3",
         "Gemini 3.6 Flash": "gateway-gemini-3-6-flash",
-        "Grok 4.5": "gateway-grok-4-5",  
+        "Grok 4.5": "gateway-grok-4-5",
+        "Grok 4.3": "gateway-grok-4-3",
     },
     "CLAUDE": {
         "Sonnet 4.6": "gateway-sonnet-4-6",
