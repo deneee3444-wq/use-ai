@@ -20,12 +20,12 @@ app.secret_key = os.urandom(24)
 app.config['PROPAGATE_EXCEPTIONS'] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "[api.use.ai](https://api.use.ai)"
-AGENTS_BASE = "[agents.use.ai](https://agents.use.ai)"
-FILES_BASE = "[files.use.ai](https://files.use.ai)"
+API_BASE = "https://api.use.ai"
+AGENTS_BASE = "https://agents.use.ai"
+FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
-ORIGIN = "[use.ai](https://use.ai)"
-REFERER = "[use.ai](https://use.ai/)"
+ORIGIN = "https://use.ai"
+REFERER = "https://use.ai/"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
 APP_PASSWORD = "123"
@@ -1178,5 +1178,5 @@ def api_conversation_rename():
 
 if __name__ == '__main__':
     print("Use AI Web Interface başlatılıyor...")
-    print("[localhost](http://localhost:5000) adresine gidin")
+    print("http://localhost:5000 adresine gidin")
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
