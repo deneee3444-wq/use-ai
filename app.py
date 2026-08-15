@@ -7,10 +7,11 @@ import os
 import random
 import string
 import time
+import urllib.parse
 import uuid
+from datetime import datetime
 import requests
 import websocket
-from datetime import datetime
 from flask import Flask, render_template, request, jsonify, Response, make_response
 
 app = Flask(__name__)
@@ -19,12 +20,12 @@ app.secret_key = os.urandom(24)
 app.config['PROPAGATE_EXCEPTIONS'] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "https://api.use.ai"
-AGENTS_BASE = "https://agents.use.ai"
-FILES_BASE = "https://files.use.ai"
-WS_BASE = "wss://agents.use.ai"
-ORIGIN = "https://use.ai"
-REFERER = "https://use.ai/"
+API_BASE = "[api.use.ai](https://api.use.ai)"
+AGENTS_BASE = "[agents.use.ai](https://agents.use.ai)"
+FILES_BASE = "[files.use.ai](https://files.use.ai)"
+WS_BASE = "wss://use.ai/agent"
+ORIGIN = "[use.ai](https://use.ai)"
+REFERER = "[use.ai](https://use.ai/)"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
 APP_PASSWORD = "123"
@@ -53,6 +54,7 @@ MODELS = {
         "Gemini 3.6 Flash": "gateway-gemini-3-6-flash",
         "Grok 4.5": "gateway-grok-4-5",
         "Grok 4.3": "gateway-grok-4-3",
+        "Kimi K3": "gateway-kimi-k3",
     },
     "CLAUDE": {
         "Sonnet 4.6": "gateway-sonnet-4-6",
@@ -342,8 +344,7 @@ def _derive_title(history):
     return title or "Konuşma"
 
 def set_turn_content(turn, text, image_urls=None):
-    """Asistan turunu YERİNDE günceller. Aynı dict nesnesi geçmişte durduğu için
-    bu çağrı anında hem sess['history']'ye hem konuşma kaydına yansır."""
+    """Asistan turunu YERİNDE günceller."""
     if image_urls:
         content = [{"type": "image_url", "image_url": {"url": u}} for u in image_urls]
         if text:
@@ -353,10 +354,6 @@ def set_turn_content(turn, text, image_urls=None):
         turn['content'] = text
 
 def save_conv_to_history(sess):
-    """Aktif konuşmayı kalıcı listeye BAĞLAR.
-    KRİTİK: kopya değil REFERANS saklanır — sess['history'] ile konuşma kaydı
-    aynı liste nesnesidir, böylece akış sırasındaki her mutasyon anında görünür.
-    """
     history = sess.get('history')
     if not history:
         return
@@ -370,7 +367,7 @@ def save_conv_to_history(sess):
 
     for c in convs:
         if c.get('conv_id') == local_id:
-            c['history'] = history           # referans
+            c['history'] = history
             if not c.get('title_locked'):
                 c['title'] = _derive_title(history)
             return
@@ -378,7 +375,7 @@ def save_conv_to_history(sess):
     convs.insert(0, {
         'conv_id': local_id,
         'title': _derive_title(history),
-        'history': history,                  # referans
+        'history': history,
     })
     sess['conversations'] = convs[:30]
 
@@ -393,23 +390,40 @@ def _switch_to_conv(sess, conv_id):
                 client.messages = []
                 client.chat_id = str(uuid.uuid4())
 
-            sess['history'] = c['history']            # referans — kopya DEĞİL
+            sess['history'] = c['history']
             sess['active_local_conv_id'] = conv_id
             return True, conv_id, len(c['history']) // 2
     return False, None, 0
 
 # ===================== CHAT STREAM =====================
 def _build_ws_url(client, agent_room):
+    encoded_email = urllib.parse.quote(client.email)
     return (
         f"{WS_BASE}/agents/budget-agent/{agent_room}"
         f"?token={client.jwt}"
         f"&app_token={client.app_token}"
         f"&userId={client.user_id}"
         f"&userType=regular"
-        f"&userEmail={client.email}"
+        f"&userEmail={encoded_email}"
         f"&planType=free"
         f"&isTestUser=false"
     )
+
+def _build_ws_headers(client):
+    cookie_str = ""
+    if client and client.session:
+        cookie_str = "; ".join(
+            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+        )
+    headers = [
+        f"User-Agent: {UA}",
+        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control: no-cache",
+        "Pragma: no-cache",
+    ]
+    if cookie_str:
+        headers.append(f"Cookie: {cookie_str}")
+    return headers
 
 def stream_message(client, text_message, attachments, web_search, image_mode,
                    image_model_id, aspect_ratio, sess,
@@ -461,15 +475,16 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
         "metadata": msg_metadata,
     }
 
-    # ---- BAĞLANTI (generator içinde; hata artık HTML 500 değil SSE event'i) ----
+    # ---- BAĞLANTI (generator içinde) ----
     ws = None
     connect_err = None
     for attempt in range(2):
         try:
+            ws_headers = _build_ws_headers(client)
             ws = websocket.create_connection(
                 _build_ws_url(client, agent_room),
                 origin=ORIGIN,
-                header=[f"User-Agent: {UA}"],
+                header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
             )
             break
@@ -477,7 +492,6 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
             connect_err = e
             ws = None
             if attempt == 0:
-                # Muhtemelen bayat jwt/app_token — tazeleyip bir kez daha dene
                 try:
                     client.refresh_auth()
                 except Exception:
@@ -488,8 +502,6 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
         yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
         return
 
-    # Bağlantı kurulduktan SONRA mesajı kuyruğa ekle (başarısız denemede
-    # client.messages kirlenmesin)
     client.messages.append(user_message)
 
     source = "image_funnel" if image_mode else ("websearch" if web_search else "chat_page")
@@ -539,7 +551,7 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
     image_urls = []
     aborted_time = None
     rate_limited = False
-    finished = False          # stream-complete alındı mı
+    finished = False
     fatal_error = None
     client_gone = False
     last_data = time.time()
@@ -560,7 +572,6 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
                     raw = ws.recv()
                 except websocket.WebSocketTimeoutException:
                     now = time.time()
-                    # >>> SONSUZ DÖNGÜ KIRICI <<<
                     if now - last_data > IDLE_TIMEOUT:
                         break
                     if now - last_ping > PING_INTERVAL and not sess.get('aborted'):
@@ -596,7 +607,6 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
                         delta = chunk.get("delta", "")
                         if delta:
                             assistant_text += delta
-                            # >>> ANLIK KALICI KAYIT: token backend'e girdiği an geçmişte <<<
                             if on_delta:
                                 on_delta(assistant_text)
                             if not sess.get('aborted'):
@@ -625,7 +635,6 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
                                     "height": im.get("height"),
                                 })
                         if urls:
-                            # Görseller de anında geçmişe yazılır
                             if on_images:
                                 on_images(assistant_text, image_urls)
                             if not sess.get('aborted'):
@@ -640,14 +649,12 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
                     break
 
         except GeneratorExit:
-            # İstemci bağlantıyı kapattı — buradan sonra yield YASAK.
             client_gone = True
             raise
         except Exception as e:
             fatal_error = str(e)
 
     finally:
-        # --- Bu blokta ASLA yield yok: GeneratorExit sırasında da güvenle çalışır ---
         try:
             ws.close()
         except Exception:
@@ -673,13 +680,11 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
         elif rate_limited and client.messages and client.messages[-1]["role"] == "user":
             client.messages.pop()
 
-        # Son kez senkronize et (idempotent)
         if on_images:
             on_images(assistant_text, image_urls)
         elif on_delta:
             on_delta(assistant_text)
 
-    # --- GARANTİLİ TERMİNAL EVENT (client hâlâ bağlıysa) ---
     if client_gone:
         return
 
@@ -822,14 +827,12 @@ def api_send():
         + [{"type": "text", "text": message}]
     ) if attachments else message
 
-    # Akış boyunca YERİNDE güncellenecek tek nesneler
-    target_history = sess['history']                     # liste referansı
-    assistant_turn = {"role": "assistant", "content": ""}  # dict referansı
+    target_history = sess['history']
+    assistant_turn = {"role": "assistant", "content": ""}
 
     target_history.append({"role": "user", "content": user_content})
     target_history.append(assistant_turn)
 
-    # Konuşma kaydını bu listeye BAĞLA (kopya değil referans)
     save_conv_to_history(sess)
 
     web_search = data.get('web_search', sess.get('web_search', False))
@@ -838,7 +841,6 @@ def api_send():
     aspect_ratio = data.get('aspect_ratio', sess.get('aspect_ratio', DEFAULT_ASPECT))
 
     def on_delta(text_so_far):
-        # O(1), throttle YOK — her token anında kalıcı yapıda
         set_turn_content(assistant_turn, text_so_far, None)
 
     def on_images(text_so_far, urls):
@@ -856,10 +858,8 @@ def api_send():
             ):
                 yield event
         except GeneratorExit:
-            # İstemci gitti; veri zaten on_delta ile yazıldı
             pass
         finally:
-            # Başlık/sayaç tazeleme; içerik zaten canlı senkronize
             try:
                 save_conv_to_history(sess)
             except Exception:
@@ -942,7 +942,7 @@ def api_new_chat():
         if carry_conv_id:
             for c in sess.get('conversations', []):
                 if c.get('conv_id') == carry_conv_id:
-                    carry_history = c['history']        # referans
+                    carry_history = c['history']
                     carry_local_id = carry_conv_id
                     break
         if carry_history is None and sess.get('history'):
@@ -983,7 +983,7 @@ def api_reset():
         if carry_conv_id:
             for c in old_sess.get('conversations', []):
                 if c.get('conv_id') == carry_conv_id:
-                    carry_history = c['history']        # referans
+                    carry_history = c['history']
                     carry_local_id = carry_conv_id
                     break
         if carry_history is None and old_sess.get('history'):
@@ -1004,7 +1004,6 @@ def api_reset():
         client.bootstrap(model=model)
         sess['client'] = client
     except Exception as e:
-        # Hesap açılamadıysa eski oturumu geri koy — veri kaybolmasın
         if old_sess:
             _sessions[sid] = old_sess
         return jsonify({'success': False, 'error': f'Hesap oluşturulamadı: {str(e)}'}), 500
@@ -1056,7 +1055,7 @@ def api_clear():
     if not sess or not sess.get('client'):
         return jsonify({'error': 'Oturum yok'}), 401
     save_conv_to_history(sess)
-    sess['history'] = []                      # yeni liste; eski konuşma kendi listesini korur
+    sess['history'] = []
     sess['active_local_conv_id'] = None
     client = sess['client']
     client.messages = []
@@ -1065,7 +1064,6 @@ def api_clear():
 
 @app.route('/api/history')
 def api_history():
-    """Canlı yapıdan okur — akış devam ederken bile son harfe kadar günceldir."""
     sess = get_sess()
     if not sess:
         return jsonify({'history': []})
@@ -1180,7 +1178,5 @@ def api_conversation_rename():
 
 if __name__ == '__main__':
     print("Use AI Web Interface başlatılıyor...")
-    print("http://localhost:5000 adresine gidin")
-    # use_reloader=False: kod dosyasına dokunulunca süreç yeniden başlayıp
-    # RAM'deki oturum/geçmiş silinmesin.
+    print("[localhost](http://localhost:5000) adresine gidin")
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
