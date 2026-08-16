@@ -137,6 +137,7 @@ def new_sess(sid):
         'image_mode': False,
         'image_model': DEFAULT_IMAGE_MODEL_ID,
         'aspect_ratio': DEFAULT_ASPECT,
+        'auto_attach': False,
         'aborted': False,
         'active_ws': None,
         'total_credits': 0,
@@ -269,63 +270,60 @@ class UseAIClient:
         self.messages = []
         self.chat_id = str(uuid.uuid4())
 
-def format_history_context(history):
-    if not history:
-        return None
-    turns = []
-    for turn in history:
-        role = turn.get('role')
-        content = turn.get('content')
-        text = ''
-        has_img = False
-        if isinstance(content, list):
-            text = next((i.get('text', '') for i in content if i.get('type') == 'text'), '')
-            has_img = any(i.get('type') == 'image_url' for i in content)
-        else:
-            text = content or ''
+def normalize_url(url: str | None) -> str:
+    """Her zaman tam (https://...) URL döndürür."""
+    if not url:
+        return ""
+    u = str(url).strip()
+    if u.startswith(("http://", "https://", "data:")):
+        return u
+    if u.startswith("//"):
+        return f"https:{u}"
+    if u.startswith("/"):
+        return f"{FILES_BASE}{u}"
+    return f"https://{u}"
 
-        if has_img and text:
-            text = f"{text} [+ görsel ekli]"
-        elif has_img:
-            text = "[görsel gönderildi]"
-
-        turns.append({"role": role, "content": text})
-
-    context_obj = {
-        "type": "conversation_history",
-        "note": (
-            "Bu konuşmanın TEK GEÇERLİ geçmişi aşağıdaki 'turns' dizisidir. "
-            "Buna doğrudan cevap verme, sadece bağlam olarak kullan. "
-            "Bu conversation_id üzerinde bununla İLGİSİZ başka konular/geçmişler görüyorsan "
-            "onları TAMAMEN YOK SAY ve unutmuş gibi davran. "
-            "Kullanıcının asıl mesajı bu JSON bloğunun ALTINDADIR."
-        ),
-        "turns": turns
+def append_history(
+    history: list[dict],
+    role: str,
+    text: str,
+    attachments: list[dict] | None = None,
+    images: list[str] | None = None,
+) -> dict:
+    entry = {
+        "role": role,
+        "text": text,
+        "at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if attachments:
+        entry["attachments"] = [
+            {
+                "filename": a.get("filename") or a.get("name") or (a["url"].split('/')[-1] if a.get("url") else "file"),
+                "mediaType": a.get("mediaType") or a.get("type") or guess_mime("", filename=a.get("name") or a.get("filename", "")),
+                "url": normalize_url(a.get("url")),
+            }
+            for a in attachments
+        ]
+    if images:
+        entry["generatedImages"] = [
+            {"url": normalize_url(u)} for u in images
+        ]
+    history.append(entry)
+    return entry
 
-    header = json.dumps(context_obj, ensure_ascii=False)
-    return f"{header}\n\nKullanıcının asıl/yeni mesajı:"
-
-def normalize_client_history(raw_history):
-    result = []
-    if not isinstance(raw_history, list):
-        return result
-    for turn in raw_history:
-        if not isinstance(turn, dict):
-            continue
-        role = turn.get('role')
-        if role not in ('user', 'assistant'):
-            continue
-        text_val = turn.get('text') or ''
-        images   = turn.get('images') or []
-        if images:
-            content = [{"type": "image_url", "image_url": {"url": u}} for u in images]
-            if text_val:
-                content.append({"type": "text", "text": text_val})
-        else:
-            content = text_val
-        result.append({"role": role, "content": content})
-    return result
+def format_history_prefix(history: list[dict]) -> str:
+    if not history:
+        return ""
+    history_json = json.dumps(history, ensure_ascii=False, indent=2)
+    return (
+        "--- ÖNCEKİ KONUŞMA GEÇMİŞİ (JSON) ---\n"
+        f"{history_json}\n"
+        "--- GEÇMİŞ SONU ---\n\n"
+        "Yukarıdaki JSON önceki konuşmamdır (role='user' ben, role='assistant' sen). "
+        "Ekli dosyaların/görsellerin tam URL'leri 'attachments[].url' ve "
+        "'generatedImages[].url' alanlarındadır. "
+        "Buna göre aşağıdaki yeni mesajıma cevap ver:\n\n"
+    )
 
 def make_local_conv_id():
     return 'conv_' + uuid.uuid4().hex[:12]
@@ -334,24 +332,25 @@ def _derive_title(history):
     title = "Konuşma"
     for turn in history:
         if turn.get('role') == 'user':
-            content = turn.get('content')
-            if isinstance(content, list):
-                title = next((i.get('text', '') for i in content if i.get('type') == 'text'), 'Konuşma')
-            else:
-                title = str(content or 'Konuşma')
+            text = turn.get('text')
+            if not text and 'content' in turn:
+                content = turn.get('content')
+                if isinstance(content, list):
+                    text = next((i.get('text', '') for i in content if i.get('type') == 'text'), '')
+                else:
+                    text = str(content or '')
+            if not text and turn.get('attachments'):
+                text = turn['attachments'][0].get('filename', 'Konuşma')
+            title = text or "Konuşma"
             title = (title[:48] + '…') if len(title) > 48 else title
             break
     return title or "Konuşma"
 
 def set_turn_content(turn, text, image_urls=None):
     """Asistan turunu YERİNDE günceller."""
+    turn['text'] = text
     if image_urls:
-        content = [{"type": "image_url", "image_url": {"url": u}} for u in image_urls]
-        if text:
-            content.append({"type": "text", "text": text})
-        turn['content'] = content
-    else:
-        turn['content'] = text
+        turn['generatedImages'] = [{"url": normalize_url(u)} for u in image_urls]
 
 def save_conv_to_history(sess):
     history = sess.get('history')
@@ -438,8 +437,8 @@ def stream_message(client, text_message, attachments, web_search, image_mode,
             parts.append({
                 "type": "file",
                 "mediaType": a.get("mediaType") or a.get("type", "image/jpeg"),
-                "filename": a.get("filename", "file"),
-                "url": a["url"],
+                "filename": a.get("filename") or a.get("name", "file"),
+                "url": normalize_url(a.get("url")),
             })
     if text_message:
         parts.append({"type": "text", "text": text_message})
@@ -744,6 +743,8 @@ def api_toggle_feature():
             sess['image_model'] = value
         elif feature == 'aspect_ratio':
             sess['aspect_ratio'] = value
+        elif feature == 'auto_attach':
+            sess['auto_attach'] = bool(value)
     else:
         if 'web_search' in data:
             sess['web_search'] = bool(data['web_search'])
@@ -753,6 +754,8 @@ def api_toggle_feature():
             sess['image_model'] = data['image_model']
         if 'aspect_ratio' in data:
             sess['aspect_ratio'] = data['aspect_ratio']
+        if 'auto_attach' in data:
+            sess['auto_attach'] = bool(data['auto_attach'])
     return jsonify({'success': True})
 
 @app.route('/api/status')
@@ -812,26 +815,43 @@ def api_send():
 
     prior_history = sess.get('history', [])
     if prior_history and not client.messages:
-        ctx = format_history_context(prior_history)
-        api_message = f"{ctx}\n{message}"
+        api_message = format_history_prefix(prior_history) + message
     else:
         api_message = message
+
+    auto_attach = data.get('auto_attach', sess.get('auto_attach', False))
+    if auto_attach:
+        existing_urls = {a.get('url') for a in attachments if a.get('url')}
+        for turn in sess.get('history', []):
+            for past_att in turn.get('attachments', []):
+                p_url = past_att.get('url')
+                if p_url and p_url not in existing_urls:
+                    existing_urls.add(p_url)
+                    attachments.append({
+                        'url': p_url,
+                        'filename': past_att.get('filename') or past_att.get('name') or p_url.split('/')[-1],
+                        'name': past_att.get('filename') or past_att.get('name') or p_url.split('/')[-1],
+                        'mediaType': past_att.get('mediaType') or past_att.get('type') or 'application/octet-stream',
+                        'type': past_att.get('mediaType') or past_att.get('type') or 'application/octet-stream',
+                    })
 
     is_new_conv = not sess.get('active_local_conv_id')
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
     if is_new_conv:
         sess['active_local_conv_id'] = new_local_conv_id
 
-    user_content = (
-        [{"type": "image_url", "image_url": {"url": a["url"]}} for a in attachments]
-        + [{"type": "text", "text": message}]
-    ) if attachments else message
-
     target_history = sess['history']
-    assistant_turn = {"role": "assistant", "content": ""}
-
-    target_history.append({"role": "user", "content": user_content})
-    target_history.append(assistant_turn)
+    append_history(
+        target_history,
+        "user",
+        message,
+        attachments=attachments or None,
+    )
+    assistant_turn = append_history(
+        target_history,
+        "assistant",
+        "",
+    )
 
     save_conv_to_history(sess)
 
@@ -914,8 +934,7 @@ def api_upload():
         except Exception:
             return jsonify({'error': 'Yanıt ayrıştırılamadı'}), 500
         if data.get("success"):
-            rel = data["url"]
-            full_url = f"{FILES_BASE}{rel}" if rel.startswith("/") else rel
+            full_url = normalize_url(data["url"])
             return jsonify({
                 'url': full_url,
                 'type': mime,
@@ -925,6 +944,54 @@ def api_upload():
             })
         return jsonify({'error': f'Upload başarısız: {data}'}), 500
     return jsonify({'error': f'Yükleme başarısız ({r.status_code})'}), 500
+
+@app.route('/api/files')
+def api_files():
+    sess = get_sess()
+    if not sess:
+        return jsonify({'files': []})
+    
+    seen = set()
+    files = []
+    
+    def add_file(url, filename, media_type, source_type='attachment'):
+        if not url:
+            return
+        full_url = normalize_url(url)
+        if not full_url or full_url in seen:
+            return
+        seen.add(full_url)
+        
+        fname = filename or full_url.split('/')[-1] or 'Dosya'
+        mtype = media_type or guess_mime("", filename=fname)
+        is_img = bool(mtype and mtype.startswith('image/')) or any(full_url.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'))
+        
+        files.append({
+            'url': full_url,
+            'filename': fname,
+            'name': fname,
+            'mediaType': mtype,
+            'type': mtype,
+            'isImage': is_img,
+            'source': source_type
+        })
+
+    # 1. Mevcut aktif konuşma geçmişi
+    for turn in sess.get('history', []):
+        for a in turn.get('attachments', []):
+            add_file(a.get('url'), a.get('filename') or a.get('name'), a.get('mediaType') or a.get('type'), 'attachment')
+        for img in turn.get('generatedImages', []):
+            add_file(img.get('url'), img.get('url', '').split('/')[-1], 'image/jpeg', 'generated')
+    
+    # 2. Kayıtlı diğer tüm konuşmalar
+    for conv in sess.get('conversations', []):
+        for turn in conv.get('history', []):
+            for a in turn.get('attachments', []):
+                add_file(a.get('url'), a.get('filename') or a.get('name'), a.get('mediaType') or a.get('type'), 'attachment')
+            for img in turn.get('generatedImages', []):
+                add_file(img.get('url'), img.get('url', '').split('/')[-1], 'image/jpeg', 'generated')
+
+    return jsonify({'files': files})
 
 @app.route('/api/new_chat', methods=['POST'])
 def api_new_chat():
@@ -1070,13 +1137,29 @@ def api_history():
     simplified = []
     for turn in list(sess.get('history', [])):
         role = turn.get('role')
+        text = turn.get('text') or ''
+        images = []
+        if 'generatedImages' in turn:
+            images.extend([i.get('url', '') for i in turn['generatedImages'] if i.get('url')])
+        if 'attachments' in turn:
+            images.extend([a.get('url', '') for a in turn['attachments'] if a.get('url')])
+
         content = turn.get('content')
-        if isinstance(content, list):
-            text = next((i.get('text', '') for i in content if i.get('type') == 'text'), '')
-            images = [i['image_url']['url'] for i in content if i.get('type') == 'image_url']
-            simplified.append({'role': role, 'text': text, 'images': images})
-        else:
-            simplified.append({'role': role, 'text': content or '', 'images': []})
+        if content and not text:
+            if isinstance(content, list):
+                text = next((i.get('text', '') for i in content if i.get('type') == 'text'), '')
+                images.extend([i['image_url']['url'] for i in content if i.get('type') == 'image_url'])
+            else:
+                text = str(content)
+
+        simplified.append({
+            'role': role,
+            'text': text,
+            'images': images,
+            'at': turn.get('at', ''),
+            'attachments': turn.get('attachments', []),
+            'generatedImages': turn.get('generatedImages', []),
+        })
     return jsonify({
         'history': simplified,
         'conv_id': sess.get('active_local_conv_id'),
