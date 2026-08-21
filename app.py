@@ -20,7 +20,7 @@ app.secret_key = os.urandom(24)
 app.config['PROPAGATE_EXCEPTIONS'] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "https://api.use.ai"
+API_BASE = "https://use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
