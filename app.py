@@ -200,6 +200,7 @@ class UseAIClient:
             headers={"content-type": "application/json"},
             json={"email": self.email},
         )
+        print(r.content)
         r.raise_for_status()
 
     def sign_in(self):
