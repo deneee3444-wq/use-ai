@@ -10,7 +10,7 @@ import time
 import urllib.parse
 import uuid
 from datetime import datetime
-import requests
+from curl_cffi import requests
 import websocket
 from flask import Flask, render_template, request, jsonify, Response, make_response
 
