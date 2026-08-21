@@ -10,7 +10,7 @@ import time
 import urllib.parse
 import uuid
 from datetime import datetime
-from curl_cffi import requests
+import requests
 import websocket
 from flask import Flask, render_template, request, jsonify, Response, make_response
 
@@ -150,7 +150,7 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 def new_session() -> requests.Session:
-    s = requests.Session(impersonate="chrome")
+    s = requests.Session()
     s.headers.update({
         "accept": "*/*",
         "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
