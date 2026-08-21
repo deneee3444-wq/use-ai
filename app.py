@@ -25,7 +25,7 @@ AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
-REFERER = "https://use.ai/tr?authmodal=true"
+REFERER = "https://use.ai/"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
 APP_PASSWORD = "123"
@@ -162,7 +162,7 @@ def new_session() -> requests.Session:
         "sec-ch-ua-platform": '"Windows"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
+        "sec-fetch-site": "same-site",
     })
     return s
 
@@ -191,16 +191,11 @@ class UseAIClient:
     def email_login(self):
         self.session = new_session()
         self.email = rand_email()
-
-        # Önce gerçek web sayfasını açarak use.ai'nin başlangıç cookie/state'ini al.
-        self.session.get(f"{API_BASE}/tr?authmodal=true")
-
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
             headers={"content-type": "application/json"},
-            json={"email": self.email},
+            data=json.dumps({"email": self.email}),
         )
-        print(r.content)
         r.raise_for_status()
 
     def sign_in(self):
