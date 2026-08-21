@@ -191,10 +191,17 @@ class UseAIClient:
     def email_login(self):
         self.session = new_session()
         self.email = rand_email()
+        
+        proxies = {
+            "http": "http://yqojrzlt-1:hqd64t4tx8ee@p.webshare.io:80",
+            "https": "http://yqojrzlt-1:hqd64t4tx8ee@p.webshare.io:80",
+        }
+        
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
             headers={"content-type": "application/json"},
             data=json.dumps({"email": self.email}),
+            proxies=proxies,
         )
         r.raise_for_status()
 
