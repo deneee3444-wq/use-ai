@@ -150,7 +150,7 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 def new_session() -> requests.Session:
-    s = requests.Session()
+    s = requests.Session(impersonate="chrome")
     s.headers.update({
         "accept": "*/*",
         "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
