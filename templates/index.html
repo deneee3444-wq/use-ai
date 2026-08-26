@@ -487,6 +487,14 @@ svg{display:block;flex:none}
   background:color-mix(in srgb,var(--error) 12%,transparent);
   padding:2px 8px;border-radius:var(--pill);
 }
+.failed-badge.retrying{
+  color:var(--accent-light);
+  background:var(--accent-dim);
+}
+.failed-badge.retrying svg{
+  animation:spin .8s linear infinite;
+  transform-origin:center;
+}
 
 /* mesaj alt aksiyon çubuğu — her zaman en altta, sabit hizalı */
 .msg-actions{
@@ -1441,17 +1449,19 @@ function useSuggestion(el) {
 
 // ─── URL / HISTORY HELPERS ────────────────────────────────────────────
 function getUrlConvId() {
+  const path = window.location.pathname;
+  if (path.startsWith('/chat/')) {
+    const id = path.slice(6).trim();
+    if (id) return id;
+  }
   return new URLSearchParams(window.location.search).get('conv') || null;
 }
 
 function setUrlConvId(convId) {
-  const url = new URL(window.location.href);
-  if (convId) {
-    url.searchParams.set('conv', convId);
-  } else {
-    url.searchParams.delete('conv');
+  const newPath = convId ? `/chat/${convId}` : '/';
+  if (window.location.pathname !== newPath || window.location.search) {
+    window.history.pushState({convId}, '', newPath);
   }
-  window.history.pushState({convId}, '', url.toString());
 }
 
 window.addEventListener('popstate', async (e) => {
@@ -2022,7 +2032,17 @@ async function sendMessage() {
   renderAttachPreview();
 
   hideEmpty();
-  appendMessage('user', msg, atts.map(a=>a.url));
+
+  const existingFailedUserEl = getFailedUserMsgEl();
+  let userEl;
+  if (existingFailedUserEl) {
+    userEl = existingFailedUserEl;
+    updateUserMessage(userEl, msg, atts.map(a=>a.url));
+    markUserMsgRetrying(userEl);
+  } else {
+    userEl = appendMessage('user', msg, atts.map(a=>a.url));
+  }
+
   const aiEl = appendMessage('ai', '', [], true);
   scrollBottom();
 
@@ -2031,6 +2051,7 @@ async function sendMessage() {
   S.abortController = new AbortController();
 
   let full = '';
+  let startReceived = false;
   const textNode = aiEl.querySelector('.msg-text');
   let postAction = null;
   let terminal = false;
@@ -2053,8 +2074,8 @@ async function sendMessage() {
 
     if (!resp.ok) {
       const errMsg = await readError(resp);
-      textNode.innerHTML = `<span style="color:var(--error)">${escHtml(errMsg)}</span>`;
-      markUserMsgFailed();
+      aiEl.remove();
+      markUserMsgFailed(userEl);
       restorePrompt(msg);
       return;
     }
@@ -2078,7 +2099,15 @@ async function sendMessage() {
         let d;
         try { d = JSON.parse(raw); } catch { continue; }
 
-        if (d.type === 'chunk') {
+        if (d.type === 'start') {
+          startReceived = true;
+          markUserMsgSuccess(userEl);
+
+        } else if (d.type === 'chunk') {
+          if (!startReceived) {
+            startReceived = true;
+            markUserMsgSuccess(userEl);
+          }
           full += d.content;
           renderMarkdown(textNode, full, true);
           scrollBottom();
@@ -2096,6 +2125,7 @@ async function sendMessage() {
         } else if (d.type === 'done') {
           full = d.full_response || full;
           renderMarkdown(textNode, full, false);
+          markUserMsgSuccess(userEl);
           S.msgCount++;
           S.autoRetries = 0;
           updateSidebar();
@@ -2106,17 +2136,26 @@ async function sendMessage() {
           const userStopped = S.stopping;
           renderMarkdown(textNode, d.full_response || full, false);
           full = await reconcileWithServer(textNode, d.full_response || full);
-          S.msgCount++;
+          if (full || startReceived) {
+            markUserMsgSuccess(userEl);
+            S.msgCount++;
+          } else {
+            markUserMsgFailed(userEl);
+          }
           updateSidebar();
           await refreshConversations();
           if (userStopped) {
             addSystemLog('⏹ Durduruldu — alınan kısım kaydedildi.');
           } else {
-            postAction = { kind: 'interrupted', pendingAtts: [...atts], hasContent: !!full };
+            postAction = { kind: 'interrupted', pendingMsg: msg, pendingAtts: [...atts], hasContent: !!full };
           }
           terminal = true;
 
         } else if (d.type === 'image_status') {
+          if (!startReceived) {
+            startReceived = true;
+            markUserMsgSuccess(userEl);
+          }
           const statusEl = document.createElement('div');
           statusEl.className = 'image-status';
           statusEl.textContent = d.message;
@@ -2124,30 +2163,43 @@ async function sendMessage() {
           scrollBottom();
 
         } else if (d.type === 'image_result') {
+          if (!startReceived) {
+            startReceived = true;
+            markUserMsgSuccess(userEl);
+          }
           ensureImages(aiEl, d.urls || []);
           scrollBottom();
 
         } else if (d.type === 'error') {
           const code = String(d.code || '');
           if (code === 'LOCKED') {
-            aiEl.remove();
+            if (!full) aiEl.remove();
+            if (!startReceived && !full) markUserMsgFailed(userEl);
             postAction = { kind: 'locked', pendingMsg: msg, pendingAtts: atts };
 
           } else if (code === 'RATE_LIMITED' || code === 'INSUFFICIENT_CREDITS') {
-            renderMarkdown(textNode, full || '', false);
+            if (!full) aiEl.remove();
+            else renderMarkdown(textNode, full || '', false);
+            if (!startReceived && !full) markUserMsgFailed(userEl);
             postAction = { kind: 'credits', pendingMsg: msg, pendingAtts: atts };
 
           } else if (code.startsWith('WS_CONNECT_FAILED')) {
             if (!full) aiEl.remove();
+            markUserMsgFailed(userEl);
             postAction = { kind: 'wsfail', pendingMsg: msg, pendingAtts: atts };
 
           } else if (code === 'STREAM_CLOSED_EMPTY') {
             aiEl.remove();
+            markUserMsgFailed(userEl);
             postAction = { kind: 'empty', pendingMsg: msg, pendingAtts: atts };
 
           } else {
-            textNode.innerHTML = `<span style="color:var(--error)">Hata: ${escHtml(code)}</span>`;
-            markUserMsgFailed();
+            if (!full) {
+              aiEl.remove();
+              markUserMsgFailed(userEl);
+            } else {
+              textNode.innerHTML = `<span style="color:var(--error)">Hata: ${escHtml(code)}</span>`;
+            }
             restorePrompt(msg);
           }
           terminal = true;
@@ -2165,7 +2217,9 @@ async function sendMessage() {
       full = await reconcileWithServer(textNode, full);
       await refreshConversations();
       if (!S.stopping) {
-        postAction = { kind: 'interrupted', pendingAtts: [...atts], hasContent: !!full };
+        if (!startReceived && !full) markUserMsgFailed(userEl);
+        else markUserMsgSuccess(userEl);
+        postAction = { kind: 'interrupted', pendingMsg: msg, pendingAtts: [...atts], hasContent: !!full };
       }
     }
 
@@ -2176,11 +2230,12 @@ async function sendMessage() {
     } else {
       full = await reconcileWithServer(textNode, full);
       await refreshConversations();
-      if (full) {
-        postAction = { kind: 'interrupted', pendingAtts: [...atts], hasContent: true };
+      if (full || startReceived) {
+        markUserMsgSuccess(userEl);
+        postAction = { kind: 'interrupted', pendingMsg: msg, pendingAtts: [...atts], hasContent: true };
       } else {
-        textNode.innerHTML = `<span style="color:var(--error)">Bağlantı hatası: ${escHtml(e.message)}</span>`;
-        markUserMsgFailed();
+        aiEl.remove();
+        markUserMsgFailed(userEl);
         restorePrompt(msg);
       }
     }
@@ -2219,14 +2274,14 @@ async function sendMessage() {
         'Yeni Sohbet Başlat',
         async () => { await doNewChatBackground(postAction.pendingMsg, postAction.pendingAtts); }
       );
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       restorePrompt(postAction.pendingMsg);
     }
 
   } else if (postAction.kind === 'credits') {
     if (isAutoMode() && guardAutoRetry()) {
       addSystemLog('⚠️ 402 Kredi tükendi — Arkaplanda giriş yapılıyor...');
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       await doAutoNewAccount(postAction.pendingMsg, postAction.pendingAtts);
     } else {
       addSystemLogWithAction(
@@ -2234,14 +2289,14 @@ async function sendMessage() {
         'Yeniden Giriş Yap',
         async () => { await doManualNewAccount(postAction.pendingMsg, postAction.pendingAtts); }
       );
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       restorePrompt(postAction.pendingMsg);
     }
 
   } else if (postAction.kind === 'wsfail') {
     if (isAutoMode() && guardAutoRetry()) {
       addSystemLog('⚠️ Bağlantı kurulamadı (oturum bayatlamış olabilir) — yeniden giriş yapılıyor...');
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       await doAutoNewAccount(postAction.pendingMsg, postAction.pendingAtts);
     } else {
       addSystemLogWithAction(
@@ -2249,7 +2304,7 @@ async function sendMessage() {
         'Oturumu Yenile',
         async () => { await doManualNewAccount(postAction.pendingMsg, postAction.pendingAtts); }
       );
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       restorePrompt(postAction.pendingMsg);
     }
 
@@ -2264,7 +2319,7 @@ async function sendMessage() {
       await sendMessage();
     } else {
       addSystemLog('⚠️ Yanıt alınamadı (boş akış).');
-      markUserMsgFailed();
+      markUserMsgFailed(userEl);
       restorePrompt(postAction.pendingMsg);
     }
   }
@@ -3082,19 +3137,90 @@ function addSystemLogWithAction(text, btnLabel, onClick) {
   scrollBottom();
 }
 
-// ─── MARK USER MSG FAILED ─────────────────────────────────────────────
-function markUserMsgFailed() {
-  const msgs = document.querySelectorAll('#messagesInner .msg');
+// ─── USER MSG STATE HELPERS ──────────────────────────────────────────
+function getFailedUserMsgEl() {
+  const msgs = document.querySelectorAll('#messagesInner .msg.user');
   for (let i = msgs.length - 1; i >= 0; i--) {
-    const roleEl = msgs[i].querySelector('.msg-role.user');
-    if (roleEl) {
-      if (!roleEl.querySelector('.failed-badge')) {
-        const badge = document.createElement('span');
-        badge.className = 'failed-badge';
-        badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> gönderilemedi';
-        roleEl.prepend(badge);
+    const el = msgs[i];
+    if (el.querySelector('.failed-badge') || el.dataset.failed === '1') {
+      return el;
+    }
+  }
+  return null;
+}
+
+function markUserMsgFailed(el) {
+  const target = el || getFailedUserMsgEl();
+  if (!target) return;
+  target.dataset.failed = '1';
+  const roleEl = target.querySelector('.msg-role.user');
+  if (roleEl) {
+    let badge = roleEl.querySelector('.failed-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      roleEl.prepend(badge);
+    }
+    badge.className = 'failed-badge';
+    badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> gönderilemedi';
+  }
+}
+
+function markUserMsgRetrying(el) {
+  const target = el || getFailedUserMsgEl();
+  if (!target) return;
+  target.dataset.failed = '1';
+  const roleEl = target.querySelector('.msg-role.user');
+  if (roleEl) {
+    let badge = roleEl.querySelector('.failed-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      roleEl.prepend(badge);
+    }
+    badge.className = 'failed-badge retrying';
+    badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> tekrar gönderiliyor...';
+  }
+}
+
+function markUserMsgSuccess(el) {
+  const target = el || getFailedUserMsgEl();
+  if (!target) return;
+  delete target.dataset.failed;
+  const roleEl = target.querySelector('.msg-role.user');
+  if (roleEl) {
+    const badge = roleEl.querySelector('.failed-badge');
+    if (badge) badge.remove();
+  }
+}
+
+function updateUserMessage(userEl, text, images = []) {
+  userEl.dataset.failed = '1';
+  const textEl = userEl.querySelector('.msg-text');
+  if (textEl) {
+    renderPlainText(textEl, text);
+  }
+
+  const attsContainer = userEl.querySelector('.msg-attachments');
+  if (attsContainer) attsContainer.remove();
+
+  if (images && images.length) {
+    const body = userEl.querySelector('.msg-body');
+    const actions = userEl.querySelector('.msg-actions');
+    const newAttsEl = document.createElement('div');
+    newAttsEl.className = 'msg-attachments';
+    newAttsEl.innerHTML = images.map(u => {
+      const isImg = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(u) || u.includes('/image');
+      const rawName = decodeURIComponent(u.split('/').pop() || 'Dosya');
+      const fname = rawName.length > 20 ? rawName.slice(0,20)+'\u2026' : rawName;
+      if (isImg) {
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><img src="${u}" alt="${escHtml(fname)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback" style="display:none"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
+      } else {
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><div class="att-chip-fallback"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
       }
-      break;
+    }).join('');
+    if (actions && body) {
+      body.insertBefore(newAttsEl, actions);
+    } else if (body) {
+      body.appendChild(newAttsEl);
     }
   }
 }
