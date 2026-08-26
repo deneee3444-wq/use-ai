@@ -320,6 +320,22 @@ class UseAIClient:
         self.chat_id = str(uuid.uuid4())
 
 
+def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
+    """URL'in sonundaki gerçek dosya ismini (decoded) döner."""
+    if default_name and str(default_name).strip():
+        name = str(default_name).strip()
+        if "%2F" in name or "%2f" in name:
+            name = urllib.parse.unquote(name).split("/")[-1]
+        elif "/" in name:
+            name = name.split("/")[-1]
+        if name:
+            return name
+    if not url:
+        return "Dosya"
+    unquoted = urllib.parse.unquote(str(url))
+    return unquoted.split("?")[0].split("/")[-1] or "Dosya"
+
+
 def normalize_url(url: str | None) -> str:
     """Her zaman tam (https://...) URL döndürür."""
     if not url:
@@ -339,7 +355,7 @@ def append_history(
     role: str,
     text: str,
     attachments: list[dict] | None = None,
-    images: list[str] | None = None,
+    images: list[str | dict] | None = None,
 ) -> dict:
     entry = {
         "role": role,
@@ -347,22 +363,63 @@ def append_history(
         "at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if attachments:
-        entry["attachments"] = [
-            {
-                "filename": a.get("filename")
-                or a.get("name")
-                or (a["url"].split("/")[-1] if a.get("url") else "file"),
-                "mediaType": a.get("mediaType")
+        clean_atts = []
+        for a in attachments:
+            url = normalize_url(a.get("url"))
+            fname = a.get("filename") or a.get("name") or get_filename_from_url(url)
+            mtype = (
+                a.get("mediaType")
                 or a.get("type")
-                or guess_mime(
-                    "", filename=a.get("name") or a.get("filename", "")
-                ),
-                "url": normalize_url(a.get("url")),
-            }
-            for a in attachments
-        ]
+                or guess_mime("", filename=fname)
+            )
+            is_img = (
+                a.get("isImage")
+                if a.get("isImage") is not None
+                else bool(mtype and mtype.startswith("image/"))
+            )
+            clean_atts.append(
+                {
+                    "filename": fname,
+                    "name": fname,
+                    "mediaType": mtype,
+                    "type": mtype,
+                    "url": url,
+                    "isImage": is_img,
+                }
+            )
+        entry["attachments"] = clean_atts
+
     if images:
-        entry["generatedImages"] = [{"url": normalize_url(u)} for u in images]
+        clean_imgs = []
+        for item in images:
+            if isinstance(item, dict):
+                url = normalize_url(item.get("url"))
+                fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
+                mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
+                clean_imgs.append(
+                    {
+                        "url": url,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": mtype,
+                        "type": mtype,
+                        "isImage": True,
+                    }
+                )
+            elif isinstance(item, str):
+                url = normalize_url(item)
+                fname = get_filename_from_url(url)
+                clean_imgs.append(
+                    {
+                        "url": url,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": "image/jpeg",
+                        "type": "image/jpeg",
+                        "isImage": True,
+                    }
+                )
+        entry["generatedImages"] = clean_imgs
     history.append(entry)
     return entry
 
@@ -372,7 +429,11 @@ def format_history_prefix(history: list[dict]) -> str:
         return ""
     clean_history = []
     for turn in history:
-        if turn.get("role") == "assistant" and not turn.get("text") and not turn.get("generatedImages"):
+        if (
+            turn.get("role") == "assistant"
+            and not turn.get("text")
+            and not turn.get("generatedImages")
+        ):
             continue
         clean_history.append(turn)
     while clean_history and clean_history[-1].get("role") == "user":
@@ -425,9 +486,36 @@ def set_turn_content(turn, text, image_urls=None):
     """Asistan turunu YERİNDE günceller."""
     turn["text"] = text
     if image_urls:
-        turn["generatedImages"] = [
-            {"url": normalize_url(u)} for u in image_urls
-        ]
+        clean_imgs = []
+        for item in image_urls:
+            if isinstance(item, dict):
+                url = normalize_url(item.get("url"))
+                fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
+                mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
+                clean_imgs.append(
+                    {
+                        "url": url,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": mtype,
+                        "type": mtype,
+                        "isImage": True,
+                    }
+                )
+            elif isinstance(item, str):
+                url = normalize_url(item)
+                fname = get_filename_from_url(url)
+                clean_imgs.append(
+                    {
+                        "url": url,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": "image/jpeg",
+                        "type": "image/jpeg",
+                        "isImage": True,
+                    }
+                )
+        turn["generatedImages"] = clean_imgs
 
 
 def save_conv_to_history(sess):
@@ -1004,21 +1092,53 @@ def api_send():
                 p_url = past_att.get("url")
                 if p_url and p_url not in existing_urls:
                     existing_urls.add(p_url)
+                    fname = (
+                        past_att.get("filename")
+                        or past_att.get("name")
+                        or get_filename_from_url(p_url)
+                    )
+                    mtype = (
+                        past_att.get("mediaType")
+                        or past_att.get("type")
+                        or guess_mime("", filename=fname)
+                    )
+                    is_img = (
+                        past_att.get("isImage")
+                        if past_att.get("isImage") is not None
+                        else bool(mtype and mtype.startswith("image/"))
+                    )
                     attachments.append(
                         {
                             "url": p_url,
-                            "filename": past_att.get("filename")
-                            or past_att.get("name")
-                            or p_url.split("/")[-1],
-                            "name": past_att.get("filename")
-                            or past_att.get("name")
-                            or p_url.split("/")[-1],
-                            "mediaType": past_att.get("mediaType")
-                            or past_att.get("type")
-                            or "application/octet-stream",
-                            "type": past_att.get("mediaType")
-                            or past_att.get("type")
-                            or "application/octet-stream",
+                            "filename": fname,
+                            "name": fname,
+                            "mediaType": mtype,
+                            "type": mtype,
+                            "isImage": is_img,
+                        }
+                    )
+            for gen_img in turn.get("generatedImages", []):
+                g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
+                if g_url and g_url not in existing_urls:
+                    existing_urls.add(g_url)
+                    fname = (
+                        (gen_img.get("filename") or gen_img.get("name"))
+                        if isinstance(gen_img, dict)
+                        else get_filename_from_url(g_url)
+                    )
+                    mtype = (
+                        (gen_img.get("mediaType") or gen_img.get("type"))
+                        if isinstance(gen_img, dict)
+                        else "image/jpeg"
+                    )
+                    attachments.append(
+                        {
+                            "url": g_url,
+                            "filename": fname,
+                            "name": fname,
+                            "mediaType": mtype,
+                            "type": mtype,
+                            "isImage": True,
                         }
                     )
 
@@ -1204,7 +1324,7 @@ def api_files():
     seen = set()
     files = []
 
-    def add_file(url, filename, media_type, source_type="attachment"):
+    def add_file(url, filename=None, media_type=None, source_type="attachment"):
         if not url:
             return
         full_url = normalize_url(url)
@@ -1212,21 +1332,16 @@ def api_files():
             return
         seen.add(full_url)
 
-        fname = filename or full_url.split("/")[-1] or "Dosya"
-        mtype = media_type or guess_mime("", filename=fname)
-        is_img = bool(mtype and mtype.startswith("image/")) or any(
-            full_url.lower().endswith(ext)
-            for ext in (
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".gif",
-                ".webp",
-                ".svg",
-                ".bmp",
-                ".ico",
-            )
+        mtype = media_type or guess_mime(
+            "", filename=filename or full_url.split("/")[-1]
         )
+        is_img = source_type == "generated" or bool(
+            mtype and mtype.startswith("image/")
+        )
+        if is_img and not (mtype and mtype.startswith("image/")):
+            mtype = "image/jpeg"
+
+        fname = filename or get_filename_from_url(full_url)
 
         files.append(
             {
@@ -1250,12 +1365,20 @@ def api_files():
                 "attachment",
             )
         for img in turn.get("generatedImages", []):
-            add_file(
-                img.get("url"),
-                img.get("url", "").split("/")[-1],
-                "image/jpeg",
-                "generated",
-            )
+            if isinstance(img, dict):
+                add_file(
+                    img.get("url"),
+                    img.get("filename") or img.get("name"),
+                    img.get("mediaType") or img.get("type") or "image/jpeg",
+                    "generated",
+                )
+            elif isinstance(img, str):
+                add_file(
+                    img,
+                    None,
+                    "image/jpeg",
+                    "generated",
+                )
 
     # 2. Kayıtlı diğer tüm konuşmalar
     for conv in sess.get("conversations", []):
@@ -1268,12 +1391,20 @@ def api_files():
                     "attachment",
                 )
             for img in turn.get("generatedImages", []):
-                add_file(
-                    img.get("url"),
-                    img.get("url", "").split("/")[-1],
-                    "image/jpeg",
-                    "generated",
-                )
+                if isinstance(img, dict):
+                    add_file(
+                        img.get("url"),
+                        img.get("filename") or img.get("name"),
+                        img.get("mediaType") or img.get("type") or "image/jpeg",
+                        "generated",
+                    )
+                elif isinstance(img, str):
+                    add_file(
+                        img,
+                        None,
+                        "image/jpeg",
+                        "generated",
+                    )
 
     return jsonify({"files": files})
 
@@ -1442,15 +1573,69 @@ def api_history():
     for turn in list(sess.get("history", [])):
         role = turn.get("role")
         text = turn.get("text") or ""
-        images = []
-        if "generatedImages" in turn:
-            images.extend(
-                [i.get("url", "") for i in turn["generatedImages"] if i.get("url")]
+
+        # attachments
+        clean_atts = []
+        for idx, a in enumerate(turn.get("attachments", []), 1):
+            u = normalize_url(a.get("url"))
+            mtype = (
+                a.get("mediaType")
+                or a.get("type")
+                or guess_mime(
+                    "", filename=a.get("filename") or a.get("name", "")
+                )
             )
-        if "attachments" in turn:
-            images.extend(
-                [a.get("url", "") for a in turn["attachments"] if a.get("url")]
+            is_img = (
+                a.get("isImage")
+                if a.get("isImage") is not None
+                else bool(mtype and mtype.startswith("image/"))
             )
+            fname = a.get("filename") or a.get("name") or get_filename_from_url(u)
+            clean_atts.append(
+                {
+                    "url": u,
+                    "filename": fname,
+                    "name": fname,
+                    "mediaType": mtype,
+                    "type": mtype,
+                    "isImage": is_img,
+                }
+            )
+
+        # generatedImages
+        clean_gen_imgs = []
+        for img in turn.get("generatedImages", []):
+            if isinstance(img, dict):
+                u = normalize_url(img.get("url"))
+                mtype = img.get("mediaType") or img.get("type") or "image/jpeg"
+                fname = img.get("filename") or img.get("name") or get_filename_from_url(u)
+                clean_gen_imgs.append(
+                    {
+                        "url": u,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": mtype,
+                        "type": mtype,
+                        "isImage": True,
+                    }
+                )
+            elif isinstance(img, str):
+                u = normalize_url(img)
+                fname = get_filename_from_url(u)
+                clean_gen_imgs.append(
+                    {
+                        "url": u,
+                        "filename": fname,
+                        "name": fname,
+                        "mediaType": "image/jpeg",
+                        "type": "image/jpeg",
+                        "isImage": True,
+                    }
+                )
+
+        images = [g["url"] for g in clean_gen_imgs] + [
+            a["url"] for a in clean_atts if a.get("isImage")
+        ]
 
         content = turn.get("content")
         if content and not text:
@@ -1463,17 +1648,15 @@ def api_history():
                     ),
                     "",
                 )
-                images.extend(
-                    [
-                        i["image_url"]["url"]
-                        for i in content
-                        if i.get("type") == "image_url"
-                    ]
-                )
+                for ci in content:
+                    if ci.get("type") == "image_url":
+                        iu = normalize_url(ci.get("image_url", {}).get("url"))
+                        if iu and iu not in images:
+                            images.append(iu)
             else:
                 text = str(content)
 
-        if role == "assistant" and not text and not images:
+        if role == "assistant" and not text and not clean_gen_imgs and not clean_atts:
             continue
 
         simplified.append(
@@ -1482,8 +1665,8 @@ def api_history():
                 "text": text,
                 "images": images,
                 "at": turn.get("at", ""),
-                "attachments": turn.get("attachments", []),
-                "generatedImages": turn.get("generatedImages", []),
+                "attachments": clean_atts,
+                "generatedImages": clean_gen_imgs,
             }
         )
     return jsonify(
