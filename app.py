@@ -157,11 +157,11 @@ def new_sess(sid):
 
 
 def rand_email() -> str:
-    """10 haneli rastgele prefix üreterek @gmail.com döndürür."""
+    """10 haneli rastgele prefix üreterek @spamok.com döndürür."""
     local = "".join(
         random.choices(string.ascii_lowercase + string.digits, k=10)
     )
-    return f"{local}@gmail.com"
+    return f"{local}@spamok.com"
 
 
 def new_session() -> requests.Session:
@@ -370,7 +370,16 @@ def append_history(
 def format_history_prefix(history: list[dict]) -> str:
     if not history:
         return ""
-    history_json = json.dumps(history, ensure_ascii=False, indent=2)
+    clean_history = []
+    for turn in history:
+        if turn.get("role") == "assistant" and not turn.get("text") and not turn.get("generatedImages"):
+            continue
+        clean_history.append(turn)
+    while clean_history and clean_history[-1].get("role") == "user":
+        clean_history.pop()
+    if not clean_history:
+        return ""
+    history_json = json.dumps(clean_history, ensure_ascii=False, indent=2)
     return (
         "--- ÖNCEKİ KONUŞMA GEÇMİŞİ (JSON) ---\n"
         f"{history_json}\n"
@@ -383,7 +392,7 @@ def format_history_prefix(history: list[dict]) -> str:
 
 
 def make_local_conv_id():
-    return "conv_" + uuid.uuid4().hex[:12]
+    return str(uuid.uuid4())
 
 
 def _derive_title(history):
@@ -424,6 +433,14 @@ def set_turn_content(turn, text, image_urls=None):
 def save_conv_to_history(sess):
     history = sess.get("history")
     if not history:
+        return
+
+    valid_turns = [
+        t
+        for t in history
+        if t.get("text") or t.get("attachments") or t.get("generatedImages")
+    ]
+    if not valid_turns:
         return
 
     convs = sess.setdefault("conversations", [])
@@ -509,6 +526,7 @@ def stream_message(
     image_model_id,
     aspect_ratio,
     sess,
+    on_start=None,
     on_delta=None,
     on_images=None,
 ):
@@ -639,6 +657,7 @@ def stream_message(
 
     assistant_text = ""
     assistant_id = ""
+    start_fired = False
     image_parts = []
     image_urls = []
     aborted_time = None
@@ -696,10 +715,20 @@ def stream_message(
                     ct = chunk.get("type", "")
                     if ct == "start":
                         assistant_id = chunk.get("messageId", "")
+                        if not start_fired:
+                            start_fired = True
+                            if on_start:
+                                on_start()
+                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
 
                     elif ct == "text-delta":
                         delta = chunk.get("delta", "")
                         if delta:
+                            if not start_fired:
+                                start_fired = True
+                                if on_start:
+                                    on_start()
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                             assistant_text += delta
                             if on_delta:
                                 on_delta(assistant_text)
@@ -710,6 +739,11 @@ def stream_message(
                         ct.startswith("tool-image-")
                         and chunk.get("state") == "input-available"
                     ):
+                        if not start_fired:
+                            start_fired = True
+                            if on_start:
+                                on_start()
+                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                         inp = chunk.get("input") or {}
                         shortCopy = inp.get("shortCopy")
                         if shortCopy and not sess.get("aborted"):
@@ -719,6 +753,11 @@ def stream_message(
                         ct.startswith("tool-image-")
                         and chunk.get("state") == "output-available"
                     ):
+                        if not start_fired:
+                            start_fired = True
+                            if on_start:
+                                on_start()
+                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                         output = chunk.get("output") or {}
                         imgs = output.get("images") or []
                         urls = []
@@ -791,9 +830,9 @@ def stream_message(
                 }
             )
         elif (
-            rate_limited
+            (rate_limited or not start_fired)
             and client.messages
-            and client.messages[-1]["role"] == "user"
+            and client.messages[-1].get("id") == user_msg_id
         ):
             client.messages.pop()
 
@@ -823,7 +862,8 @@ def _json_error_handler(e):
 
 
 @app.route("/")
-def index():
+@app.route("/chat/<conv_id>")
+def index(conv_id=None):
     resp = make_response(render_template("index.html"))
     if not request.cookies.get("ua_sid"):
         sid = str(uuid.uuid4())
@@ -987,20 +1027,27 @@ def api_send():
     if is_new_conv:
         sess["active_local_conv_id"] = new_local_conv_id
 
-    target_history = sess["history"]
-    append_history(
-        target_history,
-        "user",
-        message,
-        attachments=attachments or None,
-    )
-    assistant_turn = append_history(
-        target_history,
-        "assistant",
-        "",
-    )
+    history_committed = False
+    assistant_turn = None
 
-    save_conv_to_history(sess)
+    def commit_history_on_start():
+        nonlocal history_committed, assistant_turn
+        if history_committed:
+            return
+        history_committed = True
+        target_history = sess.setdefault("history", [])
+        append_history(
+            target_history,
+            "user",
+            message,
+            attachments=attachments or None,
+        )
+        assistant_turn = append_history(
+            target_history,
+            "assistant",
+            "",
+        )
+        save_conv_to_history(sess)
 
     web_search = data.get("web_search", sess.get("web_search", False))
     image_mode = data.get("image_mode", sess.get("image_mode", False))
@@ -1011,15 +1058,25 @@ def api_send():
         "aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT)
     )
 
+    def on_start():
+        commit_history_on_start()
+
     def on_delta(text_so_far):
-        set_turn_content(assistant_turn, text_so_far, None)
+        if not history_committed:
+            commit_history_on_start()
+        if assistant_turn is not None:
+            set_turn_content(assistant_turn, text_so_far, None)
 
     def on_images(text_so_far, urls):
-        set_turn_content(assistant_turn, text_so_far, urls)
+        if not history_committed:
+            commit_history_on_start()
+        if assistant_turn is not None:
+            set_turn_content(assistant_turn, text_so_far, urls)
+
+    conv_id_sent = False
 
     def generate():
-        if new_local_conv_id:
-            yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
+        nonlocal conv_id_sent
 
         try:
             for event in stream_message(
@@ -1031,15 +1088,39 @@ def api_send():
                 image_model_id,
                 aspect_ratio,
                 sess,
+                on_start=on_start,
                 on_delta=on_delta,
                 on_images=on_images,
             ):
+                if is_new_conv and not conv_id_sent:
+                    if '"type": "start"' in event or '"type": "chunk"' in event or history_committed:
+                        conv_id_sent = True
+                        yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
                 yield event
         except GeneratorExit:
             pass
         finally:
             try:
-                save_conv_to_history(sess)
+                target_history = sess.get("history", [])
+                while (
+                    target_history
+                    and target_history[-1].get("role") == "assistant"
+                    and not target_history[-1].get("text")
+                    and not target_history[-1].get("generatedImages")
+                ):
+                    target_history.pop()
+                    if target_history and target_history[-1].get("role") == "user":
+                        target_history.pop()
+                if target_history:
+                    save_conv_to_history(sess)
+                elif is_new_conv:
+                    sess["active_local_conv_id"] = None
+                    if new_local_conv_id:
+                        sess["conversations"] = [
+                            c
+                            for c in sess.get("conversations", [])
+                            if c.get("conv_id") != new_local_conv_id
+                        ]
             except Exception:
                 pass
 
@@ -1266,7 +1347,14 @@ def api_reset():
 
     if old_sess:
         save_conv_to_history(old_sess)
-    old_conversations = old_sess.get("conversations", []) if old_sess else []
+    old_conversations = [
+        c
+        for c in (old_sess.get("conversations", []) if old_sess else [])
+        if any(
+            t.get("text") or t.get("attachments") or t.get("generatedImages")
+            for t in c.get("history", [])
+        )
+    ]
 
     sess = new_sess(sid)
     sess["app_unlocked"] = True
@@ -1385,6 +1473,9 @@ def api_history():
             else:
                 text = str(content)
 
+        if role == "assistant" and not text and not images:
+            continue
+
         simplified.append(
             {
                 "role": role,
@@ -1410,15 +1501,24 @@ def api_conversations():
     if not sess:
         return jsonify({"conversations": []})
     convs = sess.get("conversations", [])
-    result = [
-        {
-            "idx": i,
-            "conv_id": c.get("conv_id", str(i)),
-            "title": c["title"],
-            "count": len(c["history"]) // 2,
-        }
-        for i, c in enumerate(convs)
-    ]
+    result = []
+    for i, c in enumerate(convs):
+        valid_turns = [
+            t
+            for t in c.get("history", [])
+            if t.get("text") or t.get("attachments") or t.get("generatedImages")
+        ]
+        if not valid_turns:
+            continue
+        count = len(valid_turns) // 2
+        result.append(
+            {
+                "idx": i,
+                "conv_id": c.get("conv_id") or str(uuid.uuid4()),
+                "title": c["title"],
+                "count": max(1, count),
+            }
+        )
     return jsonify({"conversations": result})
 
 
