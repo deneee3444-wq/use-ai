@@ -637,11 +637,19 @@ svg{display:block;flex:none}
 
 /* ─────────── EKLER / DURUMLAR ─────────── */
 .msg-attachments{display:flex;flex-wrap:wrap;gap:9px;margin-top:11px}
-.att-chip.msg-att{cursor:pointer;width:210px;flex:0 0 210px;height:auto;transition:transform var(--fast) var(--e),box-shadow var(--fast)}
-.att-chip.msg-att img{width:100%;height:160px;object-fit:cover;display:block}
-.att-chip.msg-att:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+.att-chip.msg-att{
+  cursor:pointer;width:200px;flex:0 0 200px;height:auto;
+  border-radius:var(--r2);overflow:hidden;background:var(--surface2);border:1px solid var(--border);
+  transition:transform var(--fast) var(--e),box-shadow var(--fast),border-color var(--fast);
+}
+.att-chip.msg-att img{width:100%;height:140px;object-fit:cover;display:block}
+.att-chip.msg-att:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:var(--accent)}
+.att-chip.msg-att .att-chip-name{
+  font-size:11px;font-weight:500;padding:6px 8px;background:var(--surface);
+  border-top:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 .att-chip-fallback{
-  width:100%;height:160px;display:grid;place-items:center;
+  width:100%;height:140px;display:grid;place-items:center;
   background:var(--surface2);color:var(--text3);font-size:0;
 }
 .att-chip-fallback::after{
@@ -651,13 +659,33 @@ svg{display:block;flex:none}
 .att-chip .att-chip-fallback.sm{height:60px}
 .att-chip .att-chip-fallback.sm::after{width:22px;height:22px}
 
-.msg-images{display:flex;flex-wrap:wrap;gap:9px;margin-top:11px}
-.msg-images img{
-  max-width:260px;max-height:220px;object-fit:cover;
-  border-radius:var(--r2);border:1px solid var(--border);cursor:pointer;
-  box-shadow:var(--sh1);transition:transform var(--fast) var(--e),box-shadow var(--fast);
+.msg-images{display:flex;flex-wrap:wrap;gap:12px;margin-top:11px}
+.msg-image-card{
+  position:relative;display:flex;flex-direction:column;
+  border-radius:var(--r2);border:1px solid var(--border);
+  background:var(--surface);overflow:hidden;box-shadow:var(--sh1);
+  max-width:320px;width:100%;transition:transform var(--fast) var(--e),box-shadow var(--fast),border-color var(--fast);
 }
-.msg-images img:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+.msg-image-card:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:var(--accent)}
+.msg-image-card img{
+  width:100%;max-height:280px;object-fit:cover;cursor:pointer;display:block;
+}
+.msg-image-caption{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 10px;font-size:11.5px;color:var(--text2);
+  background:var(--surface2);border-top:1px solid var(--border);
+  min-width:0;
+}
+.msg-image-name{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:550;color:var(--text);flex:1;
+}
+.msg-image-open-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:6px;flex-shrink:0;
+  color:var(--text3);background:transparent;
+  transition:color var(--fast),background var(--fast);
+}
+.msg-image-open-btn:hover{color:var(--accent);background:var(--surface3)}
 
 .typing-indicator{display:flex;align-items:center;gap:5px;padding:6px 0}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:typing 1.3s infinite;opacity:.4}
@@ -1065,7 +1093,7 @@ body.hide-sys-logs .sys-log{display:none}
   .input-box textarea{font-size:16px;line-height:23px;min-height:23px;height:23px}
   .msg-body{max-width:100%}
   .msg{gap:10px}
-  .msg-images img{max-width:min(200px,60vw)}
+  .msg-image-card{max-width:min(280px,85vw)}
   .att-chip.msg-att{width:150px;flex:0 0 150px}
   .att-chip.msg-att img,.att-chip.msg-att .att-chip-fallback{height:120px}
   .setup-card{padding:32px 24px}
@@ -1858,6 +1886,53 @@ function escHtml(str) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function getCleanFileName(item) {
+  if (!item) return 'Dosya';
+  if (typeof item === 'object') {
+    const raw = item.filename || item.name;
+    if (raw && String(raw).trim()) {
+      let n = String(raw).trim();
+      if (n.includes('%2F') || n.includes('%2f')) n = decodeURIComponent(n).split('/').pop();
+      else if (n.includes('/')) n = n.split('/').pop();
+      if (n) return n;
+    }
+  }
+  const u = typeof item === 'string' ? item : (item.url || '');
+  if (!u) return 'Dosya';
+  try {
+    const decoded = decodeURIComponent(u);
+    return decoded.split('?')[0].split('/').pop() || 'Dosya';
+  } catch {
+    return u.split('?')[0].split('/').pop() || 'Dosya';
+  }
+}
+
+function isImageItem(item) {
+  if (!item) return false;
+  if (typeof item === 'object') {
+    if (item.isImage !== undefined) return !!item.isImage;
+    const t = item.type || item.mediaType || '';
+    if (t.startsWith('image/')) return true;
+  }
+  const u = typeof item === 'string' ? item : (item.url || item.filename || item.name || '');
+  return /\.(jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(u) || u.includes('/image');
+}
+
+function truncateFileName(name, maxLen = 22) {
+  if (!name) return '';
+  if (name.length <= maxLen) return name;
+  const parts = name.split('.');
+  if (parts.length > 1) {
+    const ext = '.' + parts.pop();
+    const base = parts.join('.');
+    const keepBase = maxLen - ext.length - 1;
+    if (keepBase > 3) {
+      return base.slice(0, keepBase) + '…' + ext;
+    }
+  }
+  return name.slice(0, maxLen - 1) + '…';
+}
+
 // ─── SUNUCU İLE UZLAŞTIRMA ────────────────────────────────────────────
 async function fetchServerHistory() {
   try {
@@ -1881,9 +1956,13 @@ function lastAiTextNode() {
 function ensureImages(msgEl, urls) {
   if (!msgEl || !urls || !urls.length) return;
   const body = msgEl.querySelector('.msg-body') || msgEl;
-  const have = new Set(Array.from(body.querySelectorAll('img')).map(i => i.getAttribute('src')));
-  const missing = urls.filter(u => u && !have.has(u));
+  const have = new Set(Array.from(body.querySelectorAll('.msg-images img')).map(i => i.getAttribute('src')));
+  const missing = urls.filter(u => {
+    const src = typeof u === 'string' ? u : (u && u.url);
+    return src && !have.has(src);
+  });
   if (!missing.length) return;
+
   let div = body.querySelector('.msg-images');
   if (!div) {
     div = document.createElement('div');
@@ -1892,12 +1971,24 @@ function ensureImages(msgEl, urls) {
     if (actions) body.insertBefore(div, actions);
     else body.appendChild(div);
   }
-  missing.forEach(u => {
-    const img = document.createElement('img');
-    img.src = u;
-    img.alt = 'Oluşturulan görsel';
-    img.onclick = () => window.open(u, '_blank');
-    div.appendChild(img);
+
+  missing.forEach(item => {
+    const u = typeof item === 'string' ? item : (item.url || '');
+    const fullName = getCleanFileName(item);
+    const displayName = truncateFileName(fullName, 26);
+    
+    const card = document.createElement('div');
+    card.className = 'msg-image-card';
+    card.innerHTML = `
+      <img src="${u}" alt="${escHtml(displayName)}" onclick="window.open('${u}','_blank')" draggable="false">
+      <div class="msg-image-caption" title="${escHtml(fullName)}">
+        <span class="msg-image-name">${escHtml(displayName)}</span>
+        <button type="button" class="msg-image-open-btn" onclick="event.stopPropagation(); window.open('${u}','_blank')" title="Büyük Görseli Aç">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+      </div>
+    `;
+    div.appendChild(card);
   });
 }
 
@@ -1908,7 +1999,8 @@ async function reconcileWithServer(textNode, localText) {
   const serverText = turn.text || '';
   const out = serverText.length > (localText || '').length ? serverText : (localText || '');
   renderMarkdown(textNode, out, false);
-  ensureImages(textNode.closest('.msg'), turn.images);
+  const genImgs = turn.generatedImages || turn.images || [];
+  ensureImages(textNode.closest('.msg'), genImgs);
   return out;
 }
 
@@ -1959,7 +2051,8 @@ function startResumePolling() {
       if (t.length !== lastLen) {
         lastLen = t.length;
         renderMarkdown(node, t, !!data.streaming);
-        ensureImages(node.closest('.msg'), turn.images);
+        const genImgs = turn.generatedImages || turn.images || [];
+        ensureImages(node.closest('.msg'), genImgs);
         scrollBottom();
       }
       if (!data.streaming) renderMarkdown(node, t, false);
@@ -1981,7 +2074,10 @@ async function loadHistory() {
   }
 
   r.history.forEach(turn => {
-    appendMessage(turn.role === 'user' ? 'user' : 'ai', turn.text, turn.images || []);
+    const role = turn.role === 'user' ? 'user' : 'ai';
+    const atts = turn.attachments || [];
+    const genImgs = turn.generatedImages || (role === 'ai' ? (turn.images || []) : []);
+    appendMessage(role, turn.text, atts, genImgs);
   });
   scrollBottom();
 
@@ -2037,13 +2133,13 @@ async function sendMessage() {
   let userEl;
   if (existingFailedUserEl) {
     userEl = existingFailedUserEl;
-    updateUserMessage(userEl, msg, atts.map(a=>a.url));
+    updateUserMessage(userEl, msg, atts);
     markUserMsgRetrying(userEl);
   } else {
-    userEl = appendMessage('user', msg, atts.map(a=>a.url));
+    userEl = appendMessage('user', msg, atts, []);
   }
 
-  const aiEl = appendMessage('ai', '', [], true);
+  const aiEl = appendMessage('ai', '', [], [], true);
   scrollBottom();
 
   S.streaming = true;
@@ -2338,7 +2434,12 @@ function hideEmpty() {
   if (e) e.remove();
 }
 
-function appendMessage(role, text, images=[], streaming=false) {
+function appendMessage(role, text, attachments = [], generatedImages = [], streaming = false) {
+  if (typeof generatedImages === 'boolean') {
+    streaming = generatedImages;
+    generatedImages = [];
+  }
+
   const inner = document.getElementById('messagesInner');
   const el = document.createElement('div');
 
@@ -2346,17 +2447,46 @@ function appendMessage(role, text, images=[], streaming=false) {
   const roleClass = role === 'user' ? 'user' : 'ai';
   el.className = `msg ${roleClass}`;
 
-  let imgsHtml = '';
-  if (images && images.length) {
-    imgsHtml = `<div class="msg-attachments">${images.map(u => {
-      const isImg = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(u) || u.includes('/image');
-      const rawName = decodeURIComponent(u.split('/').pop() || 'Dosya');
-      const fname = rawName.length > 20 ? rawName.slice(0,20)+'\u2026' : rawName;
+  // 1. Kullanıcı Ataçları (attachments)
+  let attsHtml = '';
+  if (attachments && attachments.length) {
+    attsHtml = `<div class="msg-attachments">${attachments.map(att => {
+      const u = typeof att === 'string' ? att : (att.url || '');
+      const isImg = isImageItem(att);
+      const fullName = getCleanFileName(att);
+      const displayName = truncateFileName(fullName, 20);
+      
       if (isImg) {
-        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><img src="${u}" alt="${escHtml(fname)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback" style="display:none"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')" title="${escHtml(fullName)}">
+          <img src="${u}" alt="${escHtml(displayName)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false">
+          <div class="att-chip-fallback" style="display:none"></div>
+          <div class="att-chip-name">${escHtml(displayName)}</div>
+        </div>`;
       } else {
-        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><div class="att-chip-fallback"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')" title="${escHtml(fullName)}">
+          <div class="att-chip-fallback"></div>
+          <div class="att-chip-name">${escHtml(displayName)}</div>
+        </div>`;
       }
+    }).join('')}</div>`;
+  }
+
+  // 2. Yapay Zeka Tarafından Üretilen Görseller (generatedImages)
+  let genImgsHtml = '';
+  if (generatedImages && generatedImages.length) {
+    genImgsHtml = `<div class="msg-images">${generatedImages.map(img => {
+      const u = typeof img === 'string' ? img : (img.url || '');
+      const fullName = getCleanFileName(img);
+      const displayName = truncateFileName(fullName, 26);
+      return `<div class="msg-image-card">
+        <img src="${u}" alt="${escHtml(displayName)}" onclick="window.open('${u}','_blank')" draggable="false">
+        <div class="msg-image-caption" title="${escHtml(fullName)}">
+          <span class="msg-image-name">${escHtml(displayName)}</span>
+          <button type="button" class="msg-image-open-btn" onclick="event.stopPropagation(); window.open('${u}','_blank')" title="Büyük Görseli Aç">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>`;
     }).join('')}</div>`;
   }
 
@@ -2367,7 +2497,8 @@ function appendMessage(role, text, images=[], streaming=false) {
     <div class="msg-body">
       <div class="msg-role ${roleClass}">${roleLabel}</div>
       <div class="msg-text"></div>
-      ${imgsHtml}
+      ${attsHtml}
+      ${genImgsHtml}
       <div class="msg-actions">
         <button class="msg-act-btn" type="button" title="Prompt'a aktar" aria-label="Prompt'a aktar" onclick="useInPrompt(this)">${ICON_TO_PROMPT}</button>
         <button class="msg-act-btn" type="button" title="Kopyala" aria-label="Mesajı kopyala" onclick="copyMsgText(this)">${ICON_COPY}${ICON_CHECK}</button>
@@ -2584,12 +2715,6 @@ async function handleFiles(input) {
   }
 }
 
-function truncateFileName(name, maxLen = 14) {
-  if (!name) return '';
-  if (name.length <= maxLen) return name;
-  return name.slice(0, maxLen) + '...';
-}
-
 function renderAttachPreview() {
   const prev = document.getElementById('attachPreview');
   const container = document.getElementById('attachPreviewContainer') || prev;
@@ -2602,13 +2727,15 @@ function renderAttachPreview() {
   }
 
   prev.innerHTML = atts.map((a,i) => {
-    const isImg = a.isImage !== false && (a.isImage || (a.type && a.type.startsWith('image/')));
+    const isImg = isImageItem(a);
+    const cleanName = getCleanFileName(a);
+    const displayName = truncateFileName(cleanName, 18);
     const preview = isImg
-      ? `<img src="${a.url}" alt="${escHtml(a.name || '')}" draggable="false">`
+      ? `<img src="${a.url}" alt="${escHtml(displayName)}" draggable="false">`
       : `<div class="att-chip-fallback sm"></div>`;
-    return `<div class="att-chip" data-idx="${i}">
+    return `<div class="att-chip" data-idx="${i}" title="${escHtml(cleanName)}">
       ${preview}
-      <div class="att-chip-name">${escHtml(a.name || '')}</div>
+      <div class="att-chip-name">${escHtml(displayName)}</div>
       <button onclick="removeAtt(${i})" title="Kaldır">×</button>
     </div>`;
   }).join('');
@@ -2674,21 +2801,27 @@ async function openPastFilesModal(e) {
 
     grid.innerHTML = files.map((file, idx) => {
       const isSelected = pendingUrls.has(file.url);
-      const isImg = file.isImage !== false && (file.isImage || (file.mediaType && file.mediaType.startsWith('image/')) || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(file.url));
+      const isImg = isImageItem(file);
+      const cleanName = getCleanFileName(file);
+      const displayName = truncateFileName(cleanName, 18);
+      file.filename = cleanName;
+      file.name = cleanName;
+      file.isImage = isImg;
+      
       const preview = isImg
-        ? `<img src="${file.url}" alt="${escHtml(file.filename || file.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback sm" style="display:none"></div>`
+        ? `<img src="${file.url}" alt="${escHtml(displayName)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback sm" style="display:none"></div>`
         : `<div class="att-chip-fallback sm"></div>`;
       
       const fileJson = escHtml(JSON.stringify(file));
 
       return `
-        <div class="past-file-chip${isSelected ? ' selected' : ''}" id="pfc_${idx}" onclick="toggleSelectPastFile(${idx})" data-file='${fileJson}' title="${escHtml(file.filename || file.name)}">
+        <div class="past-file-chip${isSelected ? ' selected' : ''}" id="pfc_${idx}" onclick="toggleSelectPastFile(${idx})" data-file='${fileJson}' title="${escHtml(cleanName)}">
           <div class="past-file-check-badge">✓</div>
           <button type="button" class="past-file-link-btn" title="Bağlantıyı Aç (Yeni Sekme)" onclick="event.stopPropagation(); window.open('${file.url}','_blank')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </button>
           ${preview}
-          <div class="att-chip-name">${escHtml(file.filename || file.name)}</div>
+          <div class="att-chip-name">${escHtml(displayName)}</div>
         </div>
       `;
     }).join('');
@@ -2703,24 +2836,26 @@ function toggleSelectPastFile(idx) {
   if (!el) return;
   const file = JSON.parse(el.dataset.file);
   const existingIdx = S.pendingAtts.findIndex(a => a.url === file.url);
+  const isImg = isImageItem(file);
+  const cleanName = getCleanFileName(file);
 
   if (existingIdx >= 0) {
     S.pendingAtts.splice(existingIdx, 1);
     el.classList.remove('selected');
     renderAttachPreview();
-    toast(`${truncateFileName(file.filename || file.name, 16)} kaldırıldı`, 'info');
+    toast(`${truncateFileName(cleanName, 16)} kaldırıldı`, 'info');
   } else {
     S.pendingAtts.push({
       url: file.url,
-      type: file.type || file.mediaType || 'application/octet-stream',
-      mediaType: file.mediaType || file.type || 'application/octet-stream',
-      name: file.name || file.filename,
-      filename: file.filename || file.name,
-      isImage: file.isImage
+      type: file.type || file.mediaType || (isImg ? 'image/jpeg' : 'application/octet-stream'),
+      mediaType: file.mediaType || file.type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
+      name: cleanName,
+      filename: cleanName,
+      isImage: isImg
     });
     el.classList.add('selected');
     renderAttachPreview();
-    toast(`${truncateFileName(file.filename || file.name, 16)} eklendi`, 'success');
+    toast(`${truncateFileName(cleanName, 16)} eklendi`, 'success');
   }
 }
 
@@ -3192,7 +3327,7 @@ function markUserMsgSuccess(el) {
   }
 }
 
-function updateUserMessage(userEl, text, images = []) {
+function updateUserMessage(userEl, text, attachments = []) {
   userEl.dataset.failed = '1';
   const textEl = userEl.querySelector('.msg-text');
   if (textEl) {
@@ -3202,19 +3337,20 @@ function updateUserMessage(userEl, text, images = []) {
   const attsContainer = userEl.querySelector('.msg-attachments');
   if (attsContainer) attsContainer.remove();
 
-  if (images && images.length) {
+  if (attachments && attachments.length) {
     const body = userEl.querySelector('.msg-body');
     const actions = userEl.querySelector('.msg-actions');
     const newAttsEl = document.createElement('div');
     newAttsEl.className = 'msg-attachments';
-    newAttsEl.innerHTML = images.map(u => {
-      const isImg = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(u) || u.includes('/image');
-      const rawName = decodeURIComponent(u.split('/').pop() || 'Dosya');
-      const fname = rawName.length > 20 ? rawName.slice(0,20)+'\u2026' : rawName;
+    newAttsEl.innerHTML = attachments.map(att => {
+      const u = typeof att === 'string' ? att : (att.url || '');
+      const isImg = isImageItem(att);
+      const fullName = getCleanFileName(att);
+      const displayName = truncateFileName(fullName, 20);
       if (isImg) {
-        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><img src="${u}" alt="${escHtml(fname)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback" style="display:none"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')" title="${escHtml(fullName)}"><img src="${u}" alt="${escHtml(displayName)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback" style="display:none"></div><div class="att-chip-name">${escHtml(displayName)}</div></div>`;
       } else {
-        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')"><div class="att-chip-fallback"></div><div class="att-chip-name">${escHtml(fname)}</div></div>`;
+        return `<div class="att-chip msg-att" onclick="window.open('${u}','_blank')" title="${escHtml(fullName)}"><div class="att-chip-fallback"></div><div class="att-chip-name">${escHtml(displayName)}</div></div>`;
       }
     }).join('');
     if (actions && body) {
