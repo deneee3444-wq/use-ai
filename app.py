@@ -363,84 +363,40 @@ def append_history(
         "at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if attachments:
-        clean_atts = []
-        for a in attachments:
-            url = normalize_url(a.get("url"))
-            fname = a.get("filename") or a.get("name") or get_filename_from_url(url)
-            mtype = (
-                a.get("mediaType")
-                or a.get("type")
-                or guess_mime("", filename=fname)
-            )
-            is_img = (
-                a.get("isImage")
-                if a.get("isImage") is not None
-                else bool(mtype and mtype.startswith("image/"))
-            )
-            clean_atts.append(
-                {
-                    "filename": fname,
-                    "name": fname,
-                    "mediaType": mtype,
-                    "type": mtype,
-                    "url": url,
-                    "isImage": is_img,
-                }
-            )
-        entry["attachments"] = clean_atts
-
+        entry["attachments"] = [
+            {
+                "filename": a.get("filename") or a.get("name") or get_filename_from_url(normalize_url(a.get("url"))),
+                "mediaType": a.get("mediaType") or a.get("type") or guess_mime("", filename=a.get("filename") or a.get("name", "")),
+                "url": normalize_url(a.get("url")),
+            }
+            for a in attachments
+        ]
     if images:
-        clean_imgs = []
-        for item in images:
-            if isinstance(item, dict):
-                url = normalize_url(item.get("url"))
-                fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
-                mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
-                clean_imgs.append(
-                    {
-                        "url": url,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": mtype,
-                        "type": mtype,
-                        "isImage": True,
-                    }
-                )
-            elif isinstance(item, str):
-                url = normalize_url(item)
-                fname = get_filename_from_url(url)
-                clean_imgs.append(
-                    {
-                        "url": url,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": "image/jpeg",
-                        "type": "image/jpeg",
-                        "isImage": True,
-                    }
-                )
-        entry["generatedImages"] = clean_imgs
+        entry["generatedImages"] = _clean_image_list(images)
     history.append(entry)
     return entry
+
+
+def _clean_image_list(items):
+    """Görsel listesini (str veya dict) temiz dict listesine çevirir."""
+    result = []
+    for item in items:
+        if isinstance(item, dict):
+            url = normalize_url(item.get("url"))
+            fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
+            mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
+        else:
+            url = normalize_url(item)
+            fname = get_filename_from_url(url)
+            mtype = "image/jpeg"
+        result.append({"filename": fname, "mediaType": mtype, "url": url})
+    return result
 
 
 def format_history_prefix(history: list[dict]) -> str:
     if not history:
         return ""
-    clean_history = []
-    for turn in history:
-        if (
-            turn.get("role") == "assistant"
-            and not turn.get("text")
-            and not turn.get("generatedImages")
-        ):
-            continue
-        clean_history.append(turn)
-    while clean_history and clean_history[-1].get("role") == "user":
-        clean_history.pop()
-    if not clean_history:
-        return ""
-    history_json = json.dumps(clean_history, ensure_ascii=False, indent=2)
+    history_json = json.dumps(history, ensure_ascii=False, indent=2)
     return (
         "--- ÖNCEKİ KONUŞMA GEÇMİŞİ (JSON) ---\n"
         f"{history_json}\n"
@@ -486,36 +442,7 @@ def set_turn_content(turn, text, image_urls=None):
     """Asistan turunu YERİNDE günceller."""
     turn["text"] = text
     if image_urls:
-        clean_imgs = []
-        for item in image_urls:
-            if isinstance(item, dict):
-                url = normalize_url(item.get("url"))
-                fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
-                mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
-                clean_imgs.append(
-                    {
-                        "url": url,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": mtype,
-                        "type": mtype,
-                        "isImage": True,
-                    }
-                )
-            elif isinstance(item, str):
-                url = normalize_url(item)
-                fname = get_filename_from_url(url)
-                clean_imgs.append(
-                    {
-                        "url": url,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": "image/jpeg",
-                        "type": "image/jpeg",
-                        "isImage": True,
-                    }
-                )
-        turn["generatedImages"] = clean_imgs
+        turn["generatedImages"] = _clean_image_list(image_urls)
 
 
 def save_conv_to_history(sess):
@@ -924,10 +851,11 @@ def stream_message(
         ):
             client.messages.pop()
 
-        if on_images:
-            on_images(assistant_text, image_urls)
-        elif on_delta:
-            on_delta(assistant_text)
+        if start_fired and not rate_limited and (assistant_text or image_urls):
+            if on_images:
+                on_images(assistant_text, image_urls)
+            elif on_delta:
+                on_delta(assistant_text)
 
     if client_gone:
         return
@@ -1092,55 +1020,22 @@ def api_send():
                 p_url = past_att.get("url")
                 if p_url and p_url not in existing_urls:
                     existing_urls.add(p_url)
-                    fname = (
-                        past_att.get("filename")
-                        or past_att.get("name")
-                        or get_filename_from_url(p_url)
-                    )
-                    mtype = (
-                        past_att.get("mediaType")
-                        or past_att.get("type")
-                        or guess_mime("", filename=fname)
-                    )
-                    is_img = (
-                        past_att.get("isImage")
-                        if past_att.get("isImage") is not None
-                        else bool(mtype and mtype.startswith("image/"))
-                    )
-                    attachments.append(
-                        {
-                            "url": p_url,
-                            "filename": fname,
-                            "name": fname,
-                            "mediaType": mtype,
-                            "type": mtype,
-                            "isImage": is_img,
-                        }
-                    )
+                    fname = past_att.get("filename") or get_filename_from_url(p_url)
+                    mtype = past_att.get("mediaType") or guess_mime("", filename=fname)
+                    attachments.append({
+                        "url": p_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
             for gen_img in turn.get("generatedImages", []):
                 g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
                 if g_url and g_url not in existing_urls:
                     existing_urls.add(g_url)
-                    fname = (
-                        (gen_img.get("filename") or gen_img.get("name"))
-                        if isinstance(gen_img, dict)
-                        else get_filename_from_url(g_url)
-                    )
-                    mtype = (
-                        (gen_img.get("mediaType") or gen_img.get("type"))
-                        if isinstance(gen_img, dict)
-                        else "image/jpeg"
-                    )
-                    attachments.append(
-                        {
-                            "url": g_url,
-                            "filename": fname,
-                            "name": fname,
-                            "mediaType": mtype,
-                            "type": mtype,
-                            "isImage": True,
-                        }
-                    )
+                    fname = gen_img.get("filename") or get_filename_from_url(g_url) if isinstance(gen_img, dict) else get_filename_from_url(g_url)
+                    mtype = gen_img.get("mediaType") or "image/jpeg" if isinstance(gen_img, dict) else "image/jpeg"
+                    attachments.append({
+                        "url": g_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
 
     is_new_conv = not sess.get("active_local_conv_id")
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
@@ -1221,26 +1116,8 @@ def api_send():
             pass
         finally:
             try:
-                target_history = sess.get("history", [])
-                while (
-                    target_history
-                    and target_history[-1].get("role") == "assistant"
-                    and not target_history[-1].get("text")
-                    and not target_history[-1].get("generatedImages")
-                ):
-                    target_history.pop()
-                    if target_history and target_history[-1].get("role") == "user":
-                        target_history.pop()
-                if target_history:
+                if history_committed:
                     save_conv_to_history(sess)
-                elif is_new_conv:
-                    sess["active_local_conv_id"] = None
-                    if new_local_conv_id:
-                        sess["conversations"] = [
-                            c
-                            for c in sess.get("conversations", [])
-                            if c.get("conv_id") != new_local_conv_id
-                        ]
             except Exception:
                 pass
 
@@ -1335,54 +1212,15 @@ def api_files():
         mtype = media_type or guess_mime(
             "", filename=filename or full_url.split("/")[-1]
         )
-        is_img = source_type == "generated" or bool(
-            mtype and mtype.startswith("image/")
-        )
-        if is_img and not (mtype and mtype.startswith("image/")):
+        if source_type == "generated" and not (mtype and mtype.startswith("image/")):
             mtype = "image/jpeg"
 
         fname = filename or get_filename_from_url(full_url)
 
-        files.append(
-            {
-                "url": full_url,
-                "filename": fname,
-                "name": fname,
-                "mediaType": mtype,
-                "type": mtype,
-                "isImage": is_img,
-                "source": source_type,
-            }
-        )
+        files.append({"filename": fname, "mediaType": mtype, "url": full_url})
 
-    # 1. Mevcut aktif konuşma geçmişi
-    for turn in sess.get("history", []):
-        for a in turn.get("attachments", []):
-            add_file(
-                a.get("url"),
-                a.get("filename") or a.get("name"),
-                a.get("mediaType") or a.get("type"),
-                "attachment",
-            )
-        for img in turn.get("generatedImages", []):
-            if isinstance(img, dict):
-                add_file(
-                    img.get("url"),
-                    img.get("filename") or img.get("name"),
-                    img.get("mediaType") or img.get("type") or "image/jpeg",
-                    "generated",
-                )
-            elif isinstance(img, str):
-                add_file(
-                    img,
-                    None,
-                    "image/jpeg",
-                    "generated",
-                )
-
-    # 2. Kayıtlı diğer tüm konuşmalar
-    for conv in sess.get("conversations", []):
-        for turn in conv.get("history", []):
+    def collect_from_turns(turns):
+        for turn in turns:
             for a in turn.get("attachments", []):
                 add_file(
                     a.get("url"),
@@ -1392,19 +1230,16 @@ def api_files():
                 )
             for img in turn.get("generatedImages", []):
                 if isinstance(img, dict):
-                    add_file(
-                        img.get("url"),
-                        img.get("filename") or img.get("name"),
-                        img.get("mediaType") or img.get("type") or "image/jpeg",
-                        "generated",
-                    )
+                    add_file(img.get("url"), img.get("filename") or img.get("name"), img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
                 elif isinstance(img, str):
-                    add_file(
-                        img,
-                        None,
-                        "image/jpeg",
-                        "generated",
-                    )
+                    add_file(img, None, "image/jpeg", "generated")
+
+    # 1. Mevcut aktif konuşma geçmişi
+    collect_from_turns(sess.get("history", []))
+
+    # 2. Kayıtlı diğer tüm konuşmalar
+    for conv in sess.get("conversations", []):
+        collect_from_turns(conv.get("history", []))
 
     return jsonify({"files": files})
 
@@ -1576,65 +1411,27 @@ def api_history():
 
         # attachments
         clean_atts = []
-        for idx, a in enumerate(turn.get("attachments", []), 1):
+        for a in turn.get("attachments", []):
             u = normalize_url(a.get("url"))
-            mtype = (
-                a.get("mediaType")
-                or a.get("type")
-                or guess_mime(
-                    "", filename=a.get("filename") or a.get("name", "")
-                )
-            )
-            is_img = (
-                a.get("isImage")
-                if a.get("isImage") is not None
-                else bool(mtype and mtype.startswith("image/"))
-            )
             fname = a.get("filename") or a.get("name") or get_filename_from_url(u)
-            clean_atts.append(
-                {
-                    "url": u,
-                    "filename": fname,
-                    "name": fname,
-                    "mediaType": mtype,
-                    "type": mtype,
-                    "isImage": is_img,
-                }
-            )
+            mtype = a.get("mediaType") or a.get("type") or guess_mime("", filename=fname)
+            clean_atts.append({"filename": fname, "mediaType": mtype, "url": u})
 
         # generatedImages
         clean_gen_imgs = []
-        for img in turn.get("generatedImages", []):
-            if isinstance(img, dict):
-                u = normalize_url(img.get("url"))
-                mtype = img.get("mediaType") or img.get("type") or "image/jpeg"
-                fname = img.get("filename") or img.get("name") or get_filename_from_url(u)
-                clean_gen_imgs.append(
-                    {
-                        "url": u,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": mtype,
-                        "type": mtype,
-                        "isImage": True,
-                    }
-                )
-            elif isinstance(img, str):
-                u = normalize_url(img)
+        for g in turn.get("generatedImages", []):
+            if isinstance(g, dict):
+                u = normalize_url(g.get("url"))
+                fname = g.get("filename") or g.get("name") or get_filename_from_url(u)
+                mtype = g.get("mediaType") or g.get("type") or "image/jpeg"
+            else:
+                u = normalize_url(g)
                 fname = get_filename_from_url(u)
-                clean_gen_imgs.append(
-                    {
-                        "url": u,
-                        "filename": fname,
-                        "name": fname,
-                        "mediaType": "image/jpeg",
-                        "type": "image/jpeg",
-                        "isImage": True,
-                    }
-                )
+                mtype = "image/jpeg"
+            clean_gen_imgs.append({"filename": fname, "mediaType": mtype, "url": u})
 
         images = [g["url"] for g in clean_gen_imgs] + [
-            a["url"] for a in clean_atts if a.get("isImage")
+            a["url"] for a in clean_atts if a["mediaType"].startswith("image/")
         ]
 
         content = turn.get("content")
@@ -1655,9 +1452,6 @@ def api_history():
                             images.append(iu)
             else:
                 text = str(content)
-
-        if role == "assistant" and not text and not clean_gen_imgs and not clean_atts:
-            continue
 
         simplified.append(
             {
