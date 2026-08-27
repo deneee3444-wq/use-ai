@@ -291,8 +291,11 @@ class UseAIClient:
         r.raise_for_status()
         self.app_token = r.json()["token"]
 
-    def vote(self):
-        self.chat_id = str(uuid.uuid4())
+    def vote(self, chat_id: str | None = None):
+        if chat_id:
+            self.chat_id = chat_id
+        elif not self.chat_id:
+            self.chat_id = str(uuid.uuid4())
         r = self.session.get(
             f"{AGENTS_BASE}/vote",
             params={"chatId": self.chat_id},
@@ -302,6 +305,7 @@ class UseAIClient:
             },
         )
         r.raise_for_status()
+        return self.chat_id
 
     def refresh_auth(self):
         """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
@@ -309,12 +313,18 @@ class UseAIClient:
             self.get_session()
         except Exception:
             try:
+                self.email_login()
                 self.sign_in()
                 self.get_session()
             except Exception:
                 pass
         try:
             self.app_attestation()
+        except Exception:
+            pass
+        try:
+            if self.chat_id:
+                self.vote(self.chat_id)
         except Exception:
             pass
 
@@ -325,9 +335,8 @@ class UseAIClient:
         self.get_session()  # 4. Get session & JWT
         self.set_model(model)  # 5. Model seçimi
         self.app_attestation()  # 6. App attestation token
-        self.vote()  # 7. Initial vote / room hazirlik
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
-        self.chat_id = str(uuid.uuid4())
 
 
 def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
@@ -1293,7 +1302,10 @@ def api_new_chat():
 
     client = sess["client"]
     client.messages = []
-    client.chat_id = str(uuid.uuid4())
+    try:
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
 
     new_conv_id = None
     if carry_history:
@@ -1400,7 +1412,10 @@ def api_model():
 
     client.set_model(model)
     client.messages = []
-    client.chat_id = str(uuid.uuid4())
+    try:
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
     sess["history"] = []
     sess["active_local_conv_id"] = None
 
@@ -1417,7 +1432,10 @@ def api_clear():
     sess["active_local_conv_id"] = None
     client = sess["client"]
     client.messages = []
-    client.chat_id = str(uuid.uuid4())
+    try:
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
     return jsonify({"success": True})
 
 
