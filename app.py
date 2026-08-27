@@ -305,8 +305,18 @@ class UseAIClient:
 
     def refresh_auth(self):
         """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
-        self.get_session()
-        self.app_attestation()
+        try:
+            self.get_session()
+        except Exception:
+            try:
+                self.sign_in()
+                self.get_session()
+            except Exception:
+                pass
+        try:
+            self.app_attestation()
+        except Exception:
+            pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
         self.init_session()  # 1. GET /tr ile çerezleri topla
@@ -596,35 +606,6 @@ def stream_message(
         "metadata": msg_metadata,
     }
 
-    # ---- BAĞLANTI (generator içinde) ----
-    ws = None
-    connect_err = None
-    for attempt in range(2):
-        try:
-            ws_headers = _build_ws_headers(client)
-            ws = websocket.create_connection(
-                _build_ws_url(client, agent_room),
-                origin=ORIGIN,
-                header=ws_headers,
-                timeout=WS_CONNECT_TIMEOUT,
-            )
-            break
-        except Exception as e:
-            connect_err = e
-            ws = None
-            if attempt == 0:
-                try:
-                    client.refresh_auth()
-                except Exception:
-                    pass
-                time.sleep(0.4)
-
-    if ws is None:
-        yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
-        return
-
-    client.messages.append(user_message)
-
     source = (
         "image_funnel"
         if image_mode
@@ -667,205 +648,246 @@ def stream_message(
         payload["imageGenerationRatio"] = aspect_ratio
         payload["imageGenerationStyle"] = IMAGE_STYLE
 
-    sess["active_ws"] = ws
-    ws.settimeout(0.5)
+    for retry_cycle in range(2):
+        if retry_cycle > 0:
+            try:
+                client.refresh_auth()
+            except Exception:
+                pass
+            time.sleep(0.3)
 
-    assistant_text = ""
-    assistant_id = ""
-    start_fired = False
-    image_parts = []
-    image_urls = []
-    aborted_time = None
-    rate_limited = False
-    finished = False
-    fatal_error = None
-    client_gone = False
-    last_data = time.time()
-    last_ping = time.time()
+        current_room = str(uuid.uuid4())
+        ws = None
+        connect_err = None
 
-    try:
         try:
-            ws.send(json.dumps(payload))
+            ws_headers = _build_ws_headers(client)
+            ws = websocket.create_connection(
+                _build_ws_url(client, current_room),
+                origin=ORIGIN,
+                header=ws_headers,
+                timeout=WS_CONNECT_TIMEOUT,
+            )
+        except Exception as e:
+            connect_err = e
+            ws = None
+            if retry_cycle == 0:
+                continue
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
+                return
 
-            while True:
-                if sess.get("aborted"):
-                    if aborted_time is None:
-                        aborted_time = time.time()
-                    elif time.time() - aborted_time > 1.5:
+        client.messages.append(user_message)
+        sess["active_ws"] = ws
+        ws.settimeout(0.5)
+
+        assistant_text = ""
+        assistant_id = ""
+        start_fired = False
+        image_parts = []
+        image_urls = []
+        aborted_time = None
+        rate_limited = False
+        finished = False
+        fatal_error = None
+        client_gone = False
+        last_data = time.time()
+        last_ping = time.time()
+
+        try:
+            try:
+                ws.send(json.dumps(payload))
+
+                while True:
+                    if sess.get("aborted"):
+                        if aborted_time is None:
+                            aborted_time = time.time()
+                        elif time.time() - aborted_time > 1.5:
+                            break
+
+                    try:
+                        raw = ws.recv()
+                    except websocket.WebSocketTimeoutException:
+                        now = time.time()
+                        if now - last_data > IDLE_TIMEOUT:
+                            break
+                        if now - last_ping > PING_INTERVAL and not sess.get(
+                            "aborted"
+                        ):
+                            last_ping = now
+                            yield ": keepalive\n\n"
+                        continue
+                    except Exception:
                         break
 
-                try:
-                    raw = ws.recv()
-                except websocket.WebSocketTimeoutException:
-                    now = time.time()
-                    if now - last_data > IDLE_TIMEOUT:
+                    if not raw:
                         break
-                    if now - last_ping > PING_INTERVAL and not sess.get(
-                        "aborted"
-                    ):
-                        last_ping = now
-                        yield ": keepalive\n\n"
-                    continue
-                except Exception:
-                    break
 
-                if not raw:
-                    break
+                    last_data = time.time()
 
-                last_data = time.time()
+                    try:
+                        msg = json.loads(raw)
+                    except Exception:
+                        continue
 
-                try:
-                    msg = json.loads(raw)
-                except Exception:
-                    continue
+                    if msg.get("type") == "rate-limit-error":
+                        rate_limited = True
+                        finished = True
+                        yield f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
+                        break
 
-                if msg.get("type") == "rate-limit-error":
-                    rate_limited = True
-                    finished = True
-                    yield f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
-                    break
-
-                chunk = msg.get("chunk")
-                if chunk:
-                    ct = chunk.get("type", "")
-                    if ct == "start":
-                        assistant_id = chunk.get("messageId", "")
-                        if not start_fired:
-                            start_fired = True
-                            if on_start:
-                                on_start()
-                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-
-                    elif ct == "text-delta":
-                        delta = chunk.get("delta", "")
-                        if delta:
+                    chunk = msg.get("chunk")
+                    if chunk:
+                        ct = chunk.get("type", "")
+                        if ct == "start":
+                            assistant_id = chunk.get("messageId", "")
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
                                     on_start()
                                 yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                            assistant_text += delta
-                            if on_delta:
-                                on_delta(assistant_text)
-                            if not sess.get("aborted"):
-                                yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-                    elif (
-                        ct.startswith("tool-image-")
-                        and chunk.get("state") == "input-available"
-                    ):
-                        if not start_fired:
-                            start_fired = True
-                            if on_start:
-                                on_start()
-                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                        inp = chunk.get("input") or {}
-                        shortCopy = inp.get("shortCopy")
-                        if shortCopy and not sess.get("aborted"):
-                            yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
+                        elif ct == "text-delta":
+                            delta = chunk.get("delta", "")
+                            if delta:
+                                if not start_fired:
+                                    start_fired = True
+                                    if on_start:
+                                        on_start()
+                                    yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
+                                assistant_text += delta
+                                if on_delta:
+                                    on_delta(assistant_text)
+                                if not sess.get("aborted"):
+                                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-                    elif (
-                        ct.startswith("tool-image-")
-                        and chunk.get("state") == "output-available"
-                    ):
-                        if not start_fired:
-                            start_fired = True
-                            if on_start:
-                                on_start()
-                            yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                        output = chunk.get("output") or {}
-                        imgs = output.get("images") or []
-                        urls = []
-                        for im in imgs:
-                            u = im.get("url")
-                            if u:
-                                urls.append(u)
-                                image_urls.append(u)
-                                image_parts.append(
-                                    {
-                                        "type": "image",
-                                        "url": u,
-                                        "mediaType": im.get(
-                                            "mimeType", "image/jpeg"
-                                        ),
-                                        "width": im.get("width"),
-                                        "height": im.get("height"),
-                                    }
-                                )
-                        if urls:
-                            if on_images:
-                                on_images(assistant_text, image_urls)
-                            if not sess.get("aborted"):
-                                yield f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "input-available"
+                        ):
+                            if not start_fired:
+                                start_fired = True
+                                if on_start:
+                                    on_start()
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
+                            inp = chunk.get("input") or {}
+                            shortCopy = inp.get("shortCopy")
+                            if shortCopy and not sess.get("aborted"):
+                                yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
 
-                    elif ct == "finish":
-                        pass
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "output-available"
+                        ):
+                            if not start_fired:
+                                start_fired = True
+                                if on_start:
+                                    on_start()
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
+                            output = chunk.get("output") or {}
+                            imgs = output.get("images") or []
+                            urls = []
+                            for im in imgs:
+                                u = im.get("url")
+                                if u:
+                                    urls.append(u)
+                                    image_urls.append(u)
+                                    image_parts.append(
+                                        {
+                                            "type": "image",
+                                            "url": u,
+                                            "mediaType": im.get(
+                                                "mimeType", "image/jpeg"
+                                            ),
+                                            "width": im.get("width"),
+                                            "height": im.get("height"),
+                                        }
+                                    )
+                            if urls:
+                                if on_images:
+                                    on_images(assistant_text, image_urls)
+                                if not sess.get("aborted"):
+                                    yield f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
 
-                if msg.get("type") == "stream-complete":
-                    finished = True
-                    yield f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
-                    break
+                        elif ct == "finish":
+                            pass
 
-        except GeneratorExit:
-            client_gone = True
-            raise
-        except Exception as e:
-            fatal_error = str(e)
+                    if msg.get("type") == "stream-complete":
+                        finished = True
+                        yield f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
+                        break
 
-    finally:
-        try:
-            ws.close()
-        except Exception:
-            pass
-        if sess.get("active_ws") == ws:
-            sess.pop("active_ws", None)
+            except GeneratorExit:
+                client_gone = True
+                raise
+            except Exception as e:
+                fatal_error = str(e)
 
-        if not rate_limited and (assistant_text or image_parts):
-            asst_parts = []
-            if assistant_text:
-                asst_parts.append({"type": "text", "text": assistant_text})
-            asst_parts.extend(image_parts)
+        finally:
+            try:
+                ws.close()
+            except Exception:
+                pass
+            if sess.get("active_ws") == ws:
+                sess.pop("active_ws", None)
 
-            client.messages.append(
-                {
-                    "id": assistant_id
-                    or "".join(
-                        random.choices(
-                            string.ascii_letters + string.digits, k=16
-                        )
-                    ),
-                    "role": "assistant",
-                    "parts": asst_parts,
-                    "metadata": {
-                        "createdAt": time.strftime(
-                            "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
+            if not rate_limited and (assistant_text or image_parts):
+                asst_parts = []
+                if assistant_text:
+                    asst_parts.append({"type": "text", "text": assistant_text})
+                asst_parts.extend(image_parts)
+
+                client.messages.append(
+                    {
+                        "id": assistant_id
+                        or "".join(
+                            random.choices(
+                                string.ascii_letters + string.digits, k=16
+                            )
                         ),
-                        "modelId": client.model,
-                    },
-                }
-            )
-        elif (
-            (rate_limited or not start_fired)
-            and client.messages
-            and client.messages[-1].get("id") == user_msg_id
+                        "role": "assistant",
+                        "parts": asst_parts,
+                        "metadata": {
+                            "createdAt": time.strftime(
+                                "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
+                            ),
+                            "modelId": client.model,
+                        },
+                    }
+                )
+            elif (
+                (rate_limited or not start_fired)
+                and client.messages
+                and client.messages[-1].get("id") == user_msg_id
+            ):
+                client.messages.pop()
+
+            if start_fired and not rate_limited and (assistant_text or image_urls):
+                if on_images:
+                    on_images(assistant_text, image_urls)
+                elif on_delta:
+                    on_delta(assistant_text)
+
+        if client_gone:
+            return
+
+        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: sessizce auth tazele ve tekrar bağlan
+        if (
+            not finished
+            and not rate_limited
+            and not start_fired
+            and not assistant_text
+            and retry_cycle == 0
         ):
-            client.messages.pop()
+            continue
 
-        if start_fired and not rate_limited and (assistant_text or image_urls):
-            if on_images:
-                on_images(assistant_text, image_urls)
-            elif on_delta:
-                on_delta(assistant_text)
-
-    if client_gone:
-        return
-
-    if not finished and not rate_limited:
-        if assistant_text or image_urls:
-            yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
-        else:
-            code = fatal_error or "STREAM_CLOSED_EMPTY"
-            yield f"data: {json.dumps({'type': 'error', 'code': code})}\n\n"
+        if not finished and not rate_limited:
+            if assistant_text or image_urls:
+                yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
+            else:
+                code = fatal_error or "STREAM_CLOSED_EMPTY"
+                yield f"data: {json.dumps({'type': 'error', 'code': code})}\n\n"
+        break
 
 
 # ===================== ROUTES =====================
