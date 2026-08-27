@@ -668,24 +668,8 @@ svg{display:block;flex:none}
 }
 .msg-image-card:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-color:var(--accent)}
 .msg-image-card img{
-  width:100%;max-height:280px;object-fit:cover;cursor:pointer;display:block;
+  width:100%;max-height:300px;object-fit:cover;cursor:pointer;display:block;
 }
-.msg-image-caption{
-  display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:7px 10px;font-size:11.5px;color:var(--text2);
-  background:var(--surface2);border-top:1px solid var(--border);
-  min-width:0;
-}
-.msg-image-name{
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:550;color:var(--text);flex:1;
-}
-.msg-image-open-btn{
-  display:flex;align-items:center;justify-content:center;
-  width:22px;height:22px;border-radius:6px;flex-shrink:0;
-  color:var(--text3);background:transparent;
-  transition:color var(--fast),background var(--fast);
-}
-.msg-image-open-btn:hover{color:var(--accent);background:var(--surface3)}
 
 .typing-indicator{display:flex;align-items:center;gap:5px;padding:6px 0}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:typing 1.3s infinite;opacity:.4}
@@ -1717,7 +1701,7 @@ async function logout() {
   try {
     await fetch('/api/logout', {method:'POST'});
   } catch(e) {}
-  location.reload();
+  window.location.href = '/';
 }
 
 // ─── CONVERSATION LIST ─────────────────────────────────────────────────
@@ -1901,21 +1885,66 @@ function getCleanFileName(item) {
   if (!u) return 'Dosya';
   try {
     const decoded = decodeURIComponent(u);
-    return decoded.split('?')[0].split('/').pop() || 'Dosya';
+    return decoded.split('?')[0].split('#')[0].split('/').pop() || 'Dosya';
   } catch {
-    return u.split('?')[0].split('/').pop() || 'Dosya';
+    return u.split('?')[0].split('#')[0].split('/').pop() || 'Dosya';
   }
 }
 
 function isImageItem(item) {
   if (!item) return false;
   if (typeof item === 'object') {
-    if (item.isImage !== undefined) return !!item.isImage;
-    const t = item.type || item.mediaType || '';
+    const t = item.mediaType || item.type || '';
     if (t.startsWith('image/')) return true;
   }
   const u = typeof item === 'string' ? item : (item.url || item.filename || item.name || '');
-  return /\.(jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(u) || u.includes('/image');
+  const cleanU = String(u).split('?')[0].split('#')[0];
+  return /\.(jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(cleanU) || cleanU.includes('/image');
+}
+
+function collectAutoAttachFiles(pendingAtts = []) {
+  const existingUrls = new Set((pendingAtts || []).map(a => a.url).filter(Boolean));
+  const result = [...(pendingAtts || [])];
+
+  // 1. Sohbet baloncuklarındaki kullanıcı ataçları (.msg.user .att-chip.msg-att)
+  const attChips = document.querySelectorAll('#messagesInner .msg.user .att-chip.msg-att');
+  attChips.forEach(chip => {
+    const img = chip.querySelector('img');
+    let u = img ? img.getAttribute('src') : '';
+    if (!u) {
+      const onclick = chip.getAttribute('onclick') || '';
+      const m = onclick.match(/window\.open\('([^']+)'/);
+      if (m) u = m[1];
+    }
+    if (u && !existingUrls.has(u)) {
+      existingUrls.add(u);
+      const nameEl = chip.querySelector('.att-chip-name');
+      const name = nameEl ? nameEl.textContent.trim() : getCleanFileName(u);
+      const isImg = isImageItem(u);
+      result.push({
+        url: u,
+        filename: name || getCleanFileName(u),
+        mediaType: isImg ? 'image/jpeg' : 'application/octet-stream'
+      });
+    }
+  });
+
+  // 2. Sohbet içindeki AI üretilen görseller (.msg.ai .msg-image-card img, .msg-images img)
+  const aiImgs = document.querySelectorAll('#messagesInner .msg.ai .msg-image-card img, #messagesInner .msg.ai .msg-images img');
+  aiImgs.forEach(img => {
+    const u = img.getAttribute('src');
+    if (u && !existingUrls.has(u)) {
+      existingUrls.add(u);
+      const name = getCleanFileName(u);
+      result.push({
+        url: u,
+        filename: name,
+        mediaType: 'image/jpeg'
+      });
+    }
+  });
+
+  return result;
 }
 
 function truncateFileName(name, maxLen = 22) {
@@ -1975,18 +2004,11 @@ function ensureImages(msgEl, urls) {
   missing.forEach(item => {
     const u = typeof item === 'string' ? item : (item.url || '');
     const fullName = getCleanFileName(item);
-    const displayName = truncateFileName(fullName, 26);
     
     const card = document.createElement('div');
     card.className = 'msg-image-card';
     card.innerHTML = `
-      <img src="${u}" alt="${escHtml(displayName)}" onclick="window.open('${u}','_blank')" draggable="false">
-      <div class="msg-image-caption" title="${escHtml(fullName)}">
-        <span class="msg-image-name">${escHtml(displayName)}</span>
-        <button type="button" class="msg-image-open-btn" onclick="event.stopPropagation(); window.open('${u}','_blank')" title="Büyük Görseli Aç">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </button>
-      </div>
+      <img src="${u}" alt="${escHtml(fullName)}" onclick="window.open('${u}','_blank')" draggable="false">
     `;
     div.appendChild(card);
   });
@@ -2123,7 +2145,10 @@ async function sendMessage() {
   input.value = '';
   autoResize(input);
 
-  const atts = [...S.pendingAtts];
+  let atts = [...S.pendingAtts];
+  if (isAutoAttach()) {
+    atts = collectAutoAttachFiles(atts);
+  }
   S.pendingAtts = [];
   renderAttachPreview();
 
@@ -2158,7 +2183,11 @@ async function sendMessage() {
       signal: S.abortController.signal,
       body: JSON.stringify({
         message: msg,
-        attachments: atts.map(a=>({url:a.url, type:a.type, filename:a.filename || a.name, name:a.filename || a.name, mediaType:a.type})),
+        attachments: atts.map(a => ({
+          url: a.url,
+          filename: a.filename,
+          mediaType: a.mediaType
+        })),
         conv_id: S.activeConvId || null,
         web_search: S.webSearch,
         image_mode: S.imageMode,
@@ -2477,15 +2506,8 @@ function appendMessage(role, text, attachments = [], generatedImages = [], strea
     genImgsHtml = `<div class="msg-images">${generatedImages.map(img => {
       const u = typeof img === 'string' ? img : (img.url || '');
       const fullName = getCleanFileName(img);
-      const displayName = truncateFileName(fullName, 26);
       return `<div class="msg-image-card">
-        <img src="${u}" alt="${escHtml(displayName)}" onclick="window.open('${u}','_blank')" draggable="false">
-        <div class="msg-image-caption" title="${escHtml(fullName)}">
-          <span class="msg-image-name">${escHtml(displayName)}</span>
-          <button type="button" class="msg-image-open-btn" onclick="event.stopPropagation(); window.open('${u}','_blank')" title="Büyük Görseli Aç">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </button>
-        </div>
+        <img src="${u}" alt="${escHtml(fullName)}" onclick="window.open('${u}','_blank')" draggable="false">
       </div>`;
     }).join('')}</div>`;
   }
@@ -2703,7 +2725,11 @@ async function handleFiles(input) {
       }
       const d = await r.json();
       if (d.url) {
-        S.pendingAtts.push({url:d.url, type:d.type || file.type, name:d.filename || file.name, filename:d.filename || file.name, mediaType:d.type || file.type, isImage: file.type.startsWith('image/')});
+        S.pendingAtts.push({
+          url: d.url,
+          filename: d.filename || file.name,
+          mediaType: d.mediaType || d.type || file.type || 'application/octet-stream'
+        });
         renderAttachPreview();
         toast(`${shortName} eklendi`, 'success');
       } else {
@@ -2805,8 +2831,6 @@ async function openPastFilesModal(e) {
       const cleanName = getCleanFileName(file);
       const displayName = truncateFileName(cleanName, 18);
       file.filename = cleanName;
-      file.name = cleanName;
-      file.isImage = isImg;
       
       const preview = isImg
         ? `<img src="${file.url}" alt="${escHtml(displayName)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" draggable="false"><div class="att-chip-fallback sm" style="display:none"></div>`
@@ -2847,11 +2871,8 @@ function toggleSelectPastFile(idx) {
   } else {
     S.pendingAtts.push({
       url: file.url,
-      type: file.type || file.mediaType || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-      mediaType: file.mediaType || file.type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-      name: cleanName,
       filename: cleanName,
-      isImage: isImg
+      mediaType: file.mediaType || (isImg ? 'image/jpeg' : 'application/octet-stream')
     });
     el.classList.add('selected');
     renderAttachPreview();
