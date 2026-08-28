@@ -506,7 +506,11 @@ def _switch_to_conv(sess, conv_id):
             client = sess.get("client")
             if client:
                 client.messages = []
-                client.chat_id = str(uuid.uuid4())
+                try:
+                    client.refresh_auth()
+                    client.vote(str(uuid.uuid4()))
+                except Exception:
+                    client.chat_id = str(uuid.uuid4())
 
             sess["history"] = c["history"]
             sess["active_local_conv_id"] = conv_id
