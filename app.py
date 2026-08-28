@@ -308,13 +308,23 @@ class UseAIClient:
         return self.chat_id
 
     def refresh_auth(self):
-        """Bayatlamış jwt/app_token'ı tazeler."""
+        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
         try:
             self.get_session()
         except Exception:
-            pass
+            try:
+                self.email_login()
+                self.sign_in()
+                self.get_session()
+            except Exception:
+                pass
         try:
             self.app_attestation()
+        except Exception:
+            pass
+        try:
+            if self.chat_id:
+                self.vote(self.chat_id)
         except Exception:
             pass
 
@@ -502,7 +512,6 @@ def _switch_to_conv(sess, conv_id):
             if client:
                 client.messages = []
                 try:
-                    client.refresh_auth()
                     client.vote(str(uuid.uuid4()))
                 except Exception:
                     client.chat_id = str(uuid.uuid4())
@@ -651,6 +660,12 @@ def stream_message(
         payload["imageGenerationRatio"] = aspect_ratio
         payload["imageGenerationStyle"] = IMAGE_STYLE
 
+    if not client.chat_id:
+        try:
+            client.vote(str(uuid.uuid4()))
+        except Exception:
+            client.chat_id = str(uuid.uuid4())
+
     for retry_cycle in range(2):
         if retry_cycle > 0:
             try:
@@ -658,6 +673,11 @@ def stream_message(
             except Exception:
                 pass
             time.sleep(0.3)
+            payload["chatId"] = client.chat_id
+            payload["userId"] = client.user_id
+            payload["userEmail"] = client.email
+            payload["email"] = client.email
+            payload["mixpanelUserId"] = client.mixpanel_id
 
         current_room = str(uuid.uuid4())
         ws = None
@@ -1297,7 +1317,6 @@ def api_new_chat():
     client = sess["client"]
     client.messages = []
     try:
-        client.refresh_auth()
         client.vote(str(uuid.uuid4()))
     except Exception:
         client.chat_id = str(uuid.uuid4())
@@ -1408,7 +1427,6 @@ def api_model():
     client.set_model(model)
     client.messages = []
     try:
-        client.refresh_auth()
         client.vote(str(uuid.uuid4()))
     except Exception:
         client.chat_id = str(uuid.uuid4())
@@ -1429,7 +1447,6 @@ def api_clear():
     client = sess["client"]
     client.messages = []
     try:
-        client.refresh_auth()
         client.vote(str(uuid.uuid4()))
     except Exception:
         client.chat_id = str(uuid.uuid4())
@@ -1587,7 +1604,10 @@ def api_conversation_delete():
         sess["active_local_conv_id"] = None
         if sess.get("client"):
             sess["client"].messages = []
-            sess["client"].chat_id = str(uuid.uuid4())
+            try:
+                sess["client"].vote(str(uuid.uuid4()))
+            except Exception:
+                sess["client"].chat_id = str(uuid.uuid4())
 
     return jsonify({"success": True})
 
