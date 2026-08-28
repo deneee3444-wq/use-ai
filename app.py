@@ -17,7 +17,7 @@ from flask import Flask, Response, jsonify, make_response, render_template, requ
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
-# debug=True olsa bile hatalar HTML değil JSON dönsün
+# debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
@@ -34,9 +34,9 @@ UA = (
 APP_PASSWORD = "123"
 
 # Akış davranışı
-IDLE_TIMEOUT = 120.0      # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
-PING_INTERVAL = 15.0      # SSE keepalive aralığı
-WS_CONNECT_TIMEOUT = 25   # handshake timeout
+IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
+PING_INTERVAL = 15.0  # SSE keepalive aralığı
+WS_CONNECT_TIMEOUT = 25  # handshake timeout
 
 # ---------- MODEL KATALOĞU (chat) ----------
 MODELS = {
@@ -98,7 +98,11 @@ DEFAULT_MODEL = "gateway-opus-5"
 IMAGE_MODELS = [
     {"id": "nano-banana", "label": "Nano Banana", "provider": "openrouter"},
     {"id": "nano-banana-2", "label": "Nano Banana 2", "provider": "openrouter"},
-    {"id": "nano-banana-pro", "label": "Nano Banana Pro", "provider": "openrouter"},
+    {
+        "id": "nano-banana-pro",
+        "label": "Nano Banana Pro",
+        "provider": "openrouter",
+    },
     {"id": "seedream-4.5", "label": "Seedream 4.5", "provider": "openrouter"},
     {"id": "flux-2-pro", "label": "FLUX.2 Pro", "provider": "openrouter"},
     {"id": "flux-2-flex", "label": "FLUX.2 Flex", "provider": "openrouter"},
@@ -146,39 +150,17 @@ def new_sess(sid):
         "auto_attach": False,
         "aborted": False,
         "active_ws": None,
-        "stream_id": None,          # [FIX] aktif akış numarası
         "total_credits": 0,
         "total_cost": 0.0,
     }
     return _sessions[sid]
 
 
-def invalidate_streams(sess):
-    """[FIX] Eski akışları geçersiz kılar. Zombi akış bir sonraki
-    uyanışında numarasının değiştiğini görüp kendini kapatır."""
-    sess["stream_id"] = uuid.uuid4().hex
-    sess.pop("active_ws", None)   # bayat 'streaming' bayrağını takılı bırakma
-    sess["aborted"] = False
-    return sess["stream_id"]
-
-
-def safe_new_room(client):
-    """[FIX] Yeni oda açmadan önce bayat jwt/app_token'ı tazele.
-    refresh_auth olmadan vote() 401 yiyor, hata yutuluyor ve sunucuda
-    kayıtlı olmayan bir odaya WS açılıyor -> STREAM_CLOSED_EMPTY."""
-    try:
-        client.refresh_auth()
-    except Exception:
-        pass
-    try:
-        client.vote(str(uuid.uuid4()))
-    except Exception:
-        client.chat_id = str(uuid.uuid4())
-
-
 def rand_email() -> str:
     """10 haneli rastgele prefix üreterek @spamok.com döndürür."""
-    local = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    local = "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=10)
+    )
     return f"{local}@spamok.com"
 
 
@@ -211,6 +193,7 @@ def guess_mime(path: str, filename: str = None) -> str:
 
 
 class UseAIClient:
+
     def __init__(self):
         self.session: requests.Session | None = None
         self.email: str = ""
@@ -226,7 +209,7 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini toplar."""
+        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
         self.session = new_session()
         r = self.session.get(
             f"{API_BASE}/tr",
@@ -241,8 +224,13 @@ class UseAIClient:
         )
         r.raise_for_status()
 
-        self.mixpanel_id = self.session.cookies.get("guest_mixpanel_id") or str(uuid.uuid4())
-        self.guest_id = self.session.cookies.get("guest_user_id") or str(uuid.uuid4())
+        # Çerezleri otomatik yakala, yoksa yeni UUID üret
+        self.mixpanel_id = self.session.cookies.get(
+            "guest_mixpanel_id"
+        ) or str(uuid.uuid4())
+        self.guest_id = self.session.cookies.get("guest_user_id") or str(
+            uuid.uuid4()
+        )
 
     def email_login(self):
         if self.session is None:
@@ -320,29 +308,29 @@ class UseAIClient:
         return self.chat_id
 
     def refresh_auth(self):
-        """Bayatlamış jwt/app_token'ı tazeler."""
+        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
         try:
             self.get_session()
         except Exception:
-            try:
-                self.email_login()
-                self.sign_in()
-                self.get_session()
-            except Exception:
-                pass
+            pass
         try:
             self.app_attestation()
         except Exception:
             pass
+        try:
+            if self.chat_id:
+                self.vote(self.chat_id)
+        except Exception:
+            pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()
-        self.email_login()
-        self.sign_in()
-        self.get_session()
-        self.set_model(model)
-        self.app_attestation()
-        self.vote()
+        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.email_login()  # 2. Email login
+        self.sign_in()  # 3. Credentials sign in
+        self.get_session()  # 4. Get session & JWT
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
@@ -376,7 +364,13 @@ def normalize_url(url: str | None) -> str:
     return f"https://{u}"
 
 
-def append_history(history, role, text, attachments=None, images=None) -> dict:
+def append_history(
+    history: list[dict],
+    role: str,
+    text: str,
+    attachments: list[dict] | None = None,
+    images: list[str | dict] | None = None,
+) -> dict:
     entry = {
         "role": role,
         "text": text,
@@ -385,12 +379,8 @@ def append_history(history, role, text, attachments=None, images=None) -> dict:
     if attachments:
         entry["attachments"] = [
             {
-                "filename": a.get("filename")
-                or a.get("name")
-                or get_filename_from_url(normalize_url(a.get("url"))),
-                "mediaType": a.get("mediaType")
-                or a.get("type")
-                or guess_mime("", filename=a.get("filename") or a.get("name", "")),
+                "filename": a.get("filename") or a.get("name") or get_filename_from_url(normalize_url(a.get("url"))),
+                "mediaType": a.get("mediaType") or a.get("type") or guess_mime("", filename=a.get("filename") or a.get("name", "")),
                 "url": normalize_url(a.get("url")),
             }
             for a in attachments
@@ -445,7 +435,11 @@ def _derive_title(history):
                 content = turn.get("content")
                 if isinstance(content, list):
                     text = next(
-                        (i.get("text", "") for i in content if i.get("type") == "text"),
+                        (
+                            i.get("text", "")
+                            for i in content
+                            if i.get("type") == "text"
+                        ),
                         "",
                     )
                 else:
@@ -471,7 +465,8 @@ def save_conv_to_history(sess):
         return
 
     valid_turns = [
-        t for t in history
+        t
+        for t in history
         if t.get("text") or t.get("attachments") or t.get("generatedImages")
     ]
     if not valid_turns:
@@ -493,7 +488,11 @@ def save_conv_to_history(sess):
 
     convs.insert(
         0,
-        {"conv_id": local_id, "title": _derive_title(history), "history": history},
+        {
+            "conv_id": local_id,
+            "title": _derive_title(history),
+            "history": history,
+        },
     )
     sess["conversations"] = convs[:30]
 
@@ -504,11 +503,10 @@ def _switch_to_conv(sess, conv_id):
         if c.get("conv_id") == conv_id:
             save_conv_to_history(sess)
 
-            invalidate_streams(sess)          # [FIX]
             client = sess.get("client")
             if client:
                 client.messages = []
-                safe_new_room(client)         # [FIX] refresh_auth + vote
+                client.chat_id = str(uuid.uuid4())
 
             sess["history"] = c["history"]
             sess["active_local_conv_id"] = conv_id
@@ -557,16 +555,14 @@ def stream_message(
     image_model_id,
     aspect_ratio,
     sess,
-    stream_id,                 # [FIX] bu akışın numarası
     on_start=None,
     on_delta=None,
     on_images=None,
 ):
-    def is_current():
-        """[FIX] Bu akış hâlâ geçerli mi? Değilse zombi demektir."""
-        return sess.get("stream_id") == stream_id
-
-    user_msg_id = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+    agent_room = str(uuid.uuid4())
+    user_msg_id = "".join(
+        random.choices(string.ascii_letters + string.digits, k=16)
+    )
 
     parts = []
     if attachments:
@@ -574,7 +570,8 @@ def stream_message(
             parts.append(
                 {
                     "type": "file",
-                    "mediaType": a.get("mediaType") or a.get("type", "image/jpeg"),
+                    "mediaType": a.get("mediaType")
+                    or a.get("type", "image/jpeg"),
                     "filename": a.get("filename") or a.get("name", "file"),
                     "url": normalize_url(a.get("url")),
                 }
@@ -613,7 +610,11 @@ def stream_message(
         "metadata": msg_metadata,
     }
 
-    source = "image_funnel" if image_mode else ("websearch" if web_search else "chat_page")
+    source = (
+        "image_funnel"
+        if image_mode
+        else ("websearch" if web_search else "chat_page")
+    )
 
     payload = {
         "chatId": client.chat_id,
@@ -652,14 +653,9 @@ def stream_message(
         payload["imageGenerationStyle"] = IMAGE_STYLE
 
     for retry_cycle in range(2):
-        if not is_current():           # [FIX]
-            return
-
         if retry_cycle > 0:
             try:
                 client.refresh_auth()
-                if client.chat_id:
-                    client.vote(client.chat_id)
             except Exception:
                 pass
             time.sleep(0.3)
@@ -699,7 +695,6 @@ def stream_message(
         finished = False
         fatal_error = None
         client_gone = False
-        stale = False              # [FIX]
         last_data = time.time()
         last_ping = time.time()
 
@@ -708,11 +703,6 @@ def stream_message(
                 ws.send(json.dumps(payload))
 
                 while True:
-                    # [FIX] Numaram eskidiyse yeni bir akış devraldı: kendimi kapat.
-                    if not is_current():
-                        stale = True
-                        break
-
                     if sess.get("aborted"):
                         if aborted_time is None:
                             aborted_time = time.time()
@@ -725,7 +715,9 @@ def stream_message(
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
-                        if now - last_ping > PING_INTERVAL and not sess.get("aborted"):
+                        if now - last_ping > PING_INTERVAL and not sess.get(
+                            "aborted"
+                        ):
                             last_ping = now
                             yield ": keepalive\n\n"
                         continue
@@ -751,7 +743,6 @@ def stream_message(
                     chunk = msg.get("chunk")
                     if chunk:
                         ct = chunk.get("type", "")
-
                         if ct == "start":
                             assistant_id = chunk.get("messageId", "")
                             if not start_fired:
@@ -774,18 +765,24 @@ def stream_message(
                                 if not sess.get("aborted"):
                                     yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-                        elif ct.startswith("tool-image-") and chunk.get("state") == "input-available":
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "input-available"
+                        ):
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
                                     on_start()
                                 yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                             inp = chunk.get("input") or {}
-                            short_copy = inp.get("shortCopy")
-                            if short_copy and not sess.get("aborted"):
-                                yield f"data: {json.dumps({'type': 'image_status', 'message': short_copy})}\n\n"
+                            shortCopy = inp.get("shortCopy")
+                            if shortCopy and not sess.get("aborted"):
+                                yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
 
-                        elif ct.startswith("tool-image-") and chunk.get("state") == "output-available":
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "output-available"
+                        ):
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
@@ -803,7 +800,9 @@ def stream_message(
                                         {
                                             "type": "image",
                                             "url": u,
-                                            "mediaType": im.get("mimeType", "image/jpeg"),
+                                            "mediaType": im.get(
+                                                "mimeType", "image/jpeg"
+                                            ),
                                             "width": im.get("width"),
                                             "height": im.get("height"),
                                         }
@@ -833,51 +832,50 @@ def stream_message(
                 ws.close()
             except Exception:
                 pass
-            if sess.get("active_ws") is ws:
+            if sess.get("active_ws") == ws:
                 sess.pop("active_ws", None)
 
-            # [FIX] Zombi isem client.messages'a HİÇ dokunma.
-            # Yoksa yeni konuşmanın başına öksüz assistant mesajı sızıyor.
-            if is_current():
-                if not rate_limited and (assistant_text or image_parts):
-                    asst_parts = []
-                    if assistant_text:
-                        asst_parts.append({"type": "text", "text": assistant_text})
-                    asst_parts.extend(image_parts)
+            if not rate_limited and (assistant_text or image_parts):
+                asst_parts = []
+                if assistant_text:
+                    asst_parts.append({"type": "text", "text": assistant_text})
+                asst_parts.extend(image_parts)
 
-                    client.messages.append(
-                        {
-                            "id": assistant_id
-                            or "".join(
-                                random.choices(string.ascii_letters + string.digits, k=16)
+                client.messages.append(
+                    {
+                        "id": assistant_id
+                        or "".join(
+                            random.choices(
+                                string.ascii_letters + string.digits, k=16
+                            )
+                        ),
+                        "role": "assistant",
+                        "parts": asst_parts,
+                        "metadata": {
+                            "createdAt": time.strftime(
+                                "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
                             ),
-                            "role": "assistant",
-                            "parts": asst_parts,
-                            "metadata": {
-                                "createdAt": time.strftime(
-                                    "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
-                                ),
-                                "modelId": client.model,
-                            },
-                        }
-                    )
-                elif (
-                    (rate_limited or not start_fired)
-                    and client.messages
-                    and client.messages[-1].get("id") == user_msg_id
-                ):
-                    client.messages.pop()
+                            "modelId": client.model,
+                        },
+                    }
+                )
+            elif (
+                (rate_limited or not start_fired)
+                and client.messages
+                and client.messages[-1].get("id") == user_msg_id
+            ):
+                client.messages.pop()
 
-                if start_fired and not rate_limited and (assistant_text or image_urls):
-                    if on_images:
-                        on_images(assistant_text, image_urls)
-                    elif on_delta:
-                        on_delta(assistant_text)
+            if start_fired and not rate_limited and (assistant_text or image_urls):
+                if on_images:
+                    on_images(assistant_text, image_urls)
+                elif on_delta:
+                    on_delta(assistant_text)
 
-        if client_gone or stale:       # [FIX] zombi sessizce çekilir
+        if client_gone:
             return
 
-        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: auth tazele, tekrar bağlan
+        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: sessizce auth tazele ve tekrar bağlan
         if (
             not finished
             and not rate_limited
@@ -1000,7 +998,9 @@ def api_init():
     sess = new_sess(sid)
     sess["app_unlocked"] = True
 
-    resp = jsonify({"success": True, "account_created": False, "model": sess["model"]})
+    resp = jsonify(
+        {"success": True, "account_created": False, "model": sess["model"]}
+    )
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
     return resp
 
@@ -1021,9 +1021,7 @@ def api_send():
     if not sess or not sess.get("client"):
         return jsonify({"error": "Oturum bulunamadı."}), 401
 
-    # [FIX] Yeni akış numarası: önceki akış (varsa) bir sonraki
-    # uyanışında kendini kapatır. Bekleme/timeout gerekmez.
-    my_stream_id = invalidate_streams(sess)
+    sess["aborted"] = False
 
     data = request.json or {}
     message = data.get("message", "").strip()
@@ -1050,18 +1048,20 @@ def api_send():
                     existing_urls.add(p_url)
                     fname = past_att.get("filename") or get_filename_from_url(p_url)
                     mtype = past_att.get("mediaType") or guess_mime("", filename=fname)
-                    attachments.append({"url": p_url, "filename": fname, "mediaType": mtype})
+                    attachments.append({
+                        "url": p_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
             for gen_img in turn.get("generatedImages", []):
                 g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
                 if g_url and g_url not in existing_urls:
                     existing_urls.add(g_url)
-                    if isinstance(gen_img, dict):
-                        fname = gen_img.get("filename") or get_filename_from_url(g_url)
-                        mtype = gen_img.get("mediaType") or "image/jpeg"
-                    else:
-                        fname = get_filename_from_url(g_url)
-                        mtype = "image/jpeg"
-                    attachments.append({"url": g_url, "filename": fname, "mediaType": mtype})
+                    fname = gen_img.get("filename") or get_filename_from_url(g_url) if isinstance(gen_img, dict) else get_filename_from_url(g_url)
+                    mtype = gen_img.get("mediaType") or "image/jpeg" if isinstance(gen_img, dict) else "image/jpeg"
+                    attachments.append({
+                        "url": g_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
 
     is_new_conv = not sess.get("active_local_conv_id")
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
@@ -1077,30 +1077,38 @@ def api_send():
             return
         history_committed = True
         target_history = sess.setdefault("history", [])
-        append_history(target_history, "user", message, attachments=attachments or None)
-        assistant_turn = append_history(target_history, "assistant", "")
+        append_history(
+            target_history,
+            "user",
+            message,
+            attachments=attachments or None,
+        )
+        assistant_turn = append_history(
+            target_history,
+            "assistant",
+            "",
+        )
         save_conv_to_history(sess)
 
     web_search = data.get("web_search", sess.get("web_search", False))
     image_mode = data.get("image_mode", sess.get("image_mode", False))
-    image_model_id = data.get("image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID))
-    aspect_ratio = data.get("aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT))
+    image_model_id = data.get(
+        "image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID)
+    )
+    aspect_ratio = data.get(
+        "aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT)
+    )
 
     def on_start():
         commit_history_on_start()
 
     def on_delta(text_so_far):
-        # [FIX] Numaram eskidiyse geçmişe yazma
-        if sess.get("stream_id") != my_stream_id:
-            return
         if not history_committed:
             commit_history_on_start()
         if assistant_turn is not None:
             set_turn_content(assistant_turn, text_so_far, None)
 
     def on_images(text_so_far, urls):
-        if sess.get("stream_id") != my_stream_id:
-            return
         if not history_committed:
             commit_history_on_start()
         if assistant_turn is not None:
@@ -1110,6 +1118,7 @@ def api_send():
 
     def generate():
         nonlocal conv_id_sent
+
         try:
             for event in stream_message(
                 client,
@@ -1120,17 +1129,12 @@ def api_send():
                 image_model_id,
                 aspect_ratio,
                 sess,
-                my_stream_id,
                 on_start=on_start,
                 on_delta=on_delta,
                 on_images=on_images,
             ):
                 if is_new_conv and not conv_id_sent:
-                    if (
-                        '"type": "start"' in event
-                        or '"type": "chunk"' in event
-                        or history_committed
-                    ):
+                    if '"type": "start"' in event or '"type": "chunk"' in event or history_committed:
                         conv_id_sent = True
                         yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
                 yield event
@@ -1138,7 +1142,7 @@ def api_send():
             pass
         finally:
             try:
-                if history_committed and sess.get("stream_id") == my_stream_id:
+                if history_committed:
                     save_conv_to_history(sess)
             except Exception:
                 pass
@@ -1231,11 +1235,14 @@ def api_files():
             return
         seen.add(full_url)
 
-        mtype = media_type or guess_mime("", filename=filename or full_url.split("/")[-1])
+        mtype = media_type or guess_mime(
+            "", filename=filename or full_url.split("/")[-1]
+        )
         if source_type == "generated" and not (mtype and mtype.startswith("image/")):
             mtype = "image/jpeg"
 
         fname = filename or get_filename_from_url(full_url)
+
         files.append({"filename": fname, "mediaType": mtype, "url": full_url})
 
     def collect_from_turns(turns):
@@ -1249,16 +1256,14 @@ def api_files():
                 )
             for img in turn.get("generatedImages", []):
                 if isinstance(img, dict):
-                    add_file(
-                        img.get("url"),
-                        img.get("filename") or img.get("name"),
-                        img.get("mediaType") or img.get("type") or "image/jpeg",
-                        "generated",
-                    )
+                    add_file(img.get("url"), img.get("filename") or img.get("name"), img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
                 elif isinstance(img, str):
                     add_file(img, None, "image/jpeg", "generated")
 
+    # 1. Mevcut aktif konuşma geçmişi
     collect_from_turns(sess.get("history", []))
+
+    # 2. Kayıtlı diğer tüm konuşmalar
     for conv in sess.get("conversations", []):
         collect_from_turns(conv.get("history", []))
 
@@ -1270,8 +1275,6 @@ def api_new_chat():
     sess = get_sess()
     if not sess or not sess.get("client"):
         return jsonify({"error": "Oturum yok"}), 401
-
-    invalidate_streams(sess)          # [FIX]
 
     data = request.json or {}
     carry = data.get("carry_history", False)
@@ -1294,7 +1297,11 @@ def api_new_chat():
 
     client = sess["client"]
     client.messages = []
-    safe_new_room(client)             # [FIX] refresh_auth + vote
+    try:
+        client.refresh_auth()
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
 
     new_conv_id = None
     if carry_history:
@@ -1320,9 +1327,6 @@ def api_reset():
     sid = get_sid() or str(uuid.uuid4())
     old_sess = get_sess()
     model = old_sess.get("model", DEFAULT_MODEL) if old_sess else DEFAULT_MODEL
-
-    if old_sess:
-        invalidate_streams(old_sess)   # [FIX]
 
     carry_history = None
     carry_local_id = None
@@ -1360,7 +1364,10 @@ def api_reset():
     except Exception as e:
         if old_sess:
             _sessions[sid] = old_sess
-        return jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}), 500
+        return (
+            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}),
+            500,
+        )
 
     new_conv_id = None
     if carry_history:
@@ -1369,15 +1376,14 @@ def api_reset():
         new_conv_id = carry_local_id
         save_conv_to_history(sess)
 
-    resp = jsonify(
-        {
-            "success": True,
-            "email": client.email,
-            "model": model,
-            "carried": bool(carry_history),
-            "new_conv_id": new_conv_id,
-        }
-    )
+    resp_data = {
+        "success": True,
+        "email": client.email,
+        "model": model,
+        "carried": bool(carry_history),
+        "new_conv_id": new_conv_id,
+    }
+    resp = jsonify(resp_data)
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
     return resp
 
@@ -1396,23 +1402,17 @@ def api_model():
     if not client:
         return jsonify({"success": True, "model": model})
 
-    invalidate_streams(sess)          # [FIX]
-
-    try:
-        client.refresh_auth()
-    except Exception:
-        pass
-
-    try:
-        client.set_model(model)
-    except Exception:
-        pass
-
     if sess.get("active_local_conv_id"):
+        client.set_model(model)
         return jsonify({"success": True, "model": model})
 
+    client.set_model(model)
     client.messages = []
-    safe_new_room(client)             # [FIX]
+    try:
+        client.refresh_auth()
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
     sess["history"] = []
     sess["active_local_conv_id"] = None
 
@@ -1424,15 +1424,16 @@ def api_clear():
     sess = get_sess()
     if not sess or not sess.get("client"):
         return jsonify({"error": "Oturum yok"}), 401
-
-    invalidate_streams(sess)          # [FIX]
-
     save_conv_to_history(sess)
     sess["history"] = []
     sess["active_local_conv_id"] = None
     client = sess["client"]
     client.messages = []
-    safe_new_room(client)             # [FIX]
+    try:
+        client.refresh_auth()
+        client.vote(str(uuid.uuid4()))
+    except Exception:
+        client.chat_id = str(uuid.uuid4())
     return jsonify({"success": True})
 
 
@@ -1446,6 +1447,7 @@ def api_history():
         role = turn.get("role")
         text = turn.get("text") or ""
 
+        # attachments
         clean_atts = []
         for a in turn.get("attachments", []):
             u = normalize_url(a.get("url"))
@@ -1453,6 +1455,7 @@ def api_history():
             mtype = a.get("mediaType") or a.get("type") or guess_mime("", filename=fname)
             clean_atts.append({"filename": fname, "mediaType": mtype, "url": u})
 
+        # generatedImages
         clean_gen_imgs = []
         for g in turn.get("generatedImages", []):
             if isinstance(g, dict):
@@ -1473,7 +1476,12 @@ def api_history():
         if content and not text:
             if isinstance(content, list):
                 text = next(
-                    (i.get("text", "") for i in content if i.get("type") == "text"), ""
+                    (
+                        i.get("text", "")
+                        for i in content
+                        if i.get("type") == "text"
+                    ),
+                    "",
                 )
                 for ci in content:
                     if ci.get("type") == "image_url":
@@ -1576,12 +1584,11 @@ def api_conversation_delete():
     sess["conversations"] = new_convs
 
     if sess.get("active_local_conv_id") == conv_id:
-        invalidate_streams(sess)      # [FIX]
         sess["history"] = []
         sess["active_local_conv_id"] = None
         if sess.get("client"):
             sess["client"].messages = []
-            safe_new_room(sess["client"])
+            sess["client"].chat_id = str(uuid.uuid4())
 
     return jsonify({"success": True})
 
@@ -1612,4 +1619,6 @@ def api_conversation_rename():
 if __name__ == "__main__":
     print("Use AI Web Interface başlatılıyor...")
     print("http://localhost:5000 adresine gidin")
-    app.run(debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False)
+    app.run(
+        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
+    )
