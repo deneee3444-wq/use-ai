@@ -308,18 +308,13 @@ class UseAIClient:
         return self.chat_id
 
     def refresh_auth(self):
-        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
+        """Bayatlamış jwt/app_token'ı tazeler."""
         try:
             self.get_session()
         except Exception:
             pass
         try:
             self.app_attestation()
-        except Exception:
-            pass
-        try:
-            if self.chat_id:
-                self.vote(self.chat_id)
         except Exception:
             pass
 
