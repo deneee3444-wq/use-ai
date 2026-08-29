@@ -55,6 +55,7 @@ MODELS = {
         "GPT-5.6 Sol": "gateway-gpt-5-6",
         "GPT-5.5": "gateway-gpt-5-5",
         "Gemini 3.6 Flash": "gateway-gemini-3-6-flash",
+        "Grok 4.6": "gateway-grok-4-6",
         "Grok 4.5": "gateway-grok-4-5",
         "Grok 4.3": "gateway-grok-4-3",
         "Kimi K3": "gateway-kimi-k3",
@@ -98,13 +99,14 @@ DEFAULT_MODEL = "gateway-opus-5"
 IMAGE_MODELS = [
     {"id": "nano-banana", "label": "Nano Banana", "provider": "openrouter"},
     {"id": "nano-banana-2", "label": "Nano Banana 2", "provider": "openrouter"},
-    {
-        "id": "nano-banana-pro",
-        "label": "Nano Banana Pro",
-        "provider": "openrouter",
-    },
+    {"id": "nano-banana-2-lite", "label": "Nano Banana 2 Lite", "provider": "openrouter"},
+    {"id": "gpt-image-2", "label": "GPT Image 2", "provider": "openrouter"},
+    {"id": "nano-banana-pro", "label": "Nano Banana Pro", "provider": "openrouter"},
     {"id": "seedream-4.5", "label": "Seedream 4.5", "provider": "openrouter"},
     {"id": "flux-2-pro", "label": "FLUX.2 Pro", "provider": "openrouter"},
+    {"id": "mai-image-2.5", "label": "MAI-Image-2.5", "provider": "openrouter"},
+    {"id": "krea-2-medium-turbo", "label": "Krea 2 Medium Turbo", "provider": "openrouter"},
+    {"id": "krea-2-medium", "label": "Krea 2 Medium", "provider": "openrouter"},
     {"id": "flux-2-flex", "label": "FLUX.2 Flex", "provider": "openrouter"},
     {"id": "flux-2-max", "label": "FLUX.2 Max", "provider": "openrouter"},
 ]
