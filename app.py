@@ -11,19 +11,9 @@ import urllib.parse
 import uuid
 from datetime import datetime
 
-import requests
-import tls_client
-import tls_client.response
+from curl_cffi import requests
 import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
-
-def _tls_raise_for_status(self):
-    if self.status_code >= 400:
-        raise requests.exceptions.HTTPError(
-            f"{self.status_code} Error: {self.text}", response=self
-        )
-
-tls_client.response.Response.raise_for_status = _tls_raise_for_status
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -176,24 +166,14 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 
-def new_session() -> tls_client.Session:
-    s = tls_client.Session(
-        client_identifier="chrome_120",
-        random_tls_extension_order=True,
-    )
+def new_session() -> requests.Session:
+    s = requests.Session(impersonate="safari15_5")
     s.headers.update(
         {
             "accept": "*/*",
             "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
             "origin": ORIGIN,
-            "referer": REFERER,
-            "user-agent": UA,
-            "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
+            "referer": "https://use.ai/tr?authmodal=true",
         }
     )
     return s
@@ -210,7 +190,7 @@ def guess_mime(path: str, filename: str = None) -> str:
 class UseAIClient:
 
     def __init__(self):
-        self.session: tls_client.Session | None = None
+        self.session: requests.Session | None = None
         self.email: str = ""
         self.user_id: str = ""
         self.mixpanel_id: str = ""
@@ -239,9 +219,8 @@ class UseAIClient:
         print(f"[RENDER LOG] [1/6] POST /v1/auth/email-login gonderiliyor ({self.email})...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
-            timeout_seconds=15,
+            json=payload,
+            timeout=15,
         )
         print(f"[RENDER LOG] [1/6] email-login yanit alindi: HTTP {r.status_code} | {r.text[:120]}", flush=True)
         r.raise_for_status()
@@ -257,30 +236,25 @@ class UseAIClient:
         print(f"[RENDER LOG] [2/6] POST /v1/auth/sign-in/credentials gonderiliyor...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
-            timeout_seconds=15,
+            json=payload,
+            timeout=15,
         )
         print(f"[RENDER LOG] [2/6] sign-in yanit alindi: HTTP {r.status_code} | {r.text[:120]}", flush=True)
         r.raise_for_status()
         data = r.json()
         self.user_id = data["userId"]
-        self.auth_token = next(
-            (v for k, v in r.headers.items() if k.lower() == "set-auth-token"), ""
-        )
+        self.auth_token = r.headers.get("set-auth-token", "")
 
     def get_session(self):
         print(f"[RENDER LOG] [3/6] GET /v1/auth/get-session gonderiliyor...", flush=True)
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
-            timeout_seconds=15,
+            timeout=15,
         )
         print(f"[RENDER LOG] [3/6] get-session yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
-        new_jwt = next(
-            (v for k, v in r.headers.items() if k.lower() == "set-auth-jwt"), None
-        )
+        new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
@@ -292,9 +266,8 @@ class UseAIClient:
         print(f"[RENDER LOG] [4/6] POST /v1/chat/set-model gonderiliyor ({model})...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/chat/set-model",
-            headers={"content-type": "application/json"},
-            data=json.dumps({"model": model}),
-            timeout_seconds=15,
+            json={"model": model},
+            timeout=15,
         )
         print(f"[RENDER LOG] [4/6] set-model yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
@@ -304,9 +277,8 @@ class UseAIClient:
         print(f"[RENDER LOG] [5/6] POST /v1/auth/app-attestation gonderiliyor...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            headers={"content-type": "application/json"},
-            data="{}",
-            timeout_seconds=15,
+            json={},
+            timeout=15,
         )
         print(f"[RENDER LOG] [5/6] app-attestation yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
@@ -326,7 +298,7 @@ class UseAIClient:
                 "authorization": f"Bearer {self.jwt}",
                 "x-guest-user-id": f"guest:{self.guest_id}",
             },
-            timeout_seconds=15,
+            timeout=15,
         )
         print(f"[RENDER LOG] [6/6] vote yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
