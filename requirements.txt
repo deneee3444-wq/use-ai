@@ -2,3 +2,4 @@ flask
 requests
 gunicorn
 websocket-client
+tls-client
