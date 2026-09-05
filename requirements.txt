@@ -2,5 +2,4 @@ flask
 requests
 gunicorn
 websocket-client
-tls-client
-typing_extensions
+curl_cffi
