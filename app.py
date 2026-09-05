@@ -12,8 +12,18 @@ import uuid
 from datetime import datetime
 
 import requests
+import tls_client
+import tls_client.response
 import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
+
+def _tls_raise_for_status(self):
+    if self.status_code >= 400:
+        raise requests.exceptions.HTTPError(
+            f"{self.status_code} Error: {self.text}", response=self
+        )
+
+tls_client.response.Response.raise_for_status = _tls_raise_for_status
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -29,7 +39,7 @@ ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
 
@@ -166,8 +176,11 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 
-def new_session() -> requests.Session:
-    s = requests.Session()
+def new_session() -> tls_client.Session:
+    s = tls_client.Session(
+        client_identifier="chrome_120",
+        random_tls_extension_order=True,
+    )
     s.headers.update(
         {
             "accept": "*/*",
@@ -175,12 +188,12 @@ def new_session() -> requests.Session:
             "origin": ORIGIN,
             "referer": REFERER,
             "user-agent": UA,
-            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+            "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
+            "sec-fetch-site": "same-origin",
         }
     )
     return s
@@ -197,7 +210,7 @@ def guess_mime(path: str, filename: str = None) -> str:
 class UseAIClient:
 
     def __init__(self):
-        self.session: requests.Session | None = None
+        self.session: tls_client.Session | None = None
         self.email: str = ""
         self.user_id: str = ""
         self.mixpanel_id: str = ""
@@ -211,28 +224,9 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
         self.session = new_session()
-        r = self.session.get(
-            f"{API_BASE}/tr",
-            headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-            },
-        )
-        r.raise_for_status()
-
-        # Çerezleri otomatik yakala, yoksa yeni UUID üret
-        self.mixpanel_id = self.session.cookies.get(
-            "guest_mixpanel_id"
-        ) or str(uuid.uuid4())
-        self.guest_id = self.session.cookies.get("guest_user_id") or str(
-            uuid.uuid4()
-        )
+        self.mixpanel_id = str(uuid.uuid4())
+        self.guest_id = str(uuid.uuid4())
 
     def email_login(self):
         if self.session is None:
@@ -263,7 +257,9 @@ class UseAIClient:
         r.raise_for_status()
         data = r.json()
         self.user_id = data["userId"]
-        self.auth_token = r.headers.get("set-auth-token", "")
+        self.auth_token = next(
+            (v for k, v in r.headers.items() if k.lower() == "set-auth-token"), ""
+        )
 
     def get_session(self):
         r = self.session.get(
@@ -271,7 +267,9 @@ class UseAIClient:
             params={"disableCookieCache": "true"},
         )
         r.raise_for_status()
-        new_jwt = r.headers.get("set-auth-jwt")
+        new_jwt = next(
+            (v for k, v in r.headers.items() if k.lower() == "set-auth-jwt"), None
+        )
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
@@ -1208,10 +1206,19 @@ def api_upload():
         "file": (filename, file_bytes, mime),
     }
     try:
-        r = client.session.post(
+        cookie_dict = (
+            client.session.cookies.get_dict()
+            if hasattr(client.session.cookies, "get_dict")
+            else dict(client.session.cookies)
+        )
+        r = requests.post(
             f"{FILES_BASE}/upload",
             files=files,
-            headers={"authorization": f"Bearer {client.jwt}"},
+            headers={
+                "authorization": f"Bearer {client.jwt}",
+                "user-agent": UA,
+            },
+            cookies=cookie_dict,
             timeout=60,
         )
     except Exception as e:
