@@ -11,7 +11,7 @@ import urllib.parse
 import uuid
 from datetime import datetime
 
-from curl_cffi import requests
+import requests
 import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
@@ -29,7 +29,7 @@ ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
 
@@ -167,13 +167,20 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    s = requests.Session(impersonate="safari15_5")
+    s = requests.Session()
     s.headers.update(
         {
             "accept": "*/*",
             "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
             "origin": ORIGIN,
-            "referer": "https://use.ai/tr?authmodal=true",
+            "referer": REFERER,
+            "user-agent": UA,
+            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
         }
     )
     return s
@@ -204,11 +211,28 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        print("[RENDER LOG] [0/6] init_session baslatiliyor...", flush=True)
+        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
         self.session = new_session()
-        self.mixpanel_id = str(uuid.uuid4())
-        self.guest_id = str(uuid.uuid4())
-        print(f"[RENDER LOG] [0/6] init_session tamamlandi: mixpanel={self.mixpanel_id[:8]} guest={self.guest_id[:8]}", flush=True)
+        r = self.session.get(
+            f"{API_BASE}/tr",
+            headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1",
+            },
+        )
+        r.raise_for_status()
+
+        # Çerezleri otomatik yakala, yoksa yeni UUID üret
+        self.mixpanel_id = self.session.cookies.get(
+            "guest_mixpanel_id"
+        ) or str(uuid.uuid4())
+        self.guest_id = self.session.cookies.get("guest_user_id") or str(
+            uuid.uuid4()
+        )
 
     def email_login(self):
         if self.session is None:
@@ -216,13 +240,11 @@ class UseAIClient:
 
         self.email = rand_email()
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
-        print(f"[RENDER LOG] [1/6] POST /v1/auth/email-login gonderiliyor ({self.email})...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            json=payload,
-            timeout=15,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
         )
-        print(f"[RENDER LOG] [1/6] email-login yanit alindi: HTTP {r.status_code} | {r.text[:120]}", flush=True)
         r.raise_for_status()
 
     def sign_in(self):
@@ -233,26 +255,21 @@ class UseAIClient:
             "mid": self.mixpanel_id,
             "turnstileBypass": True,
         }
-        print(f"[RENDER LOG] [2/6] POST /v1/auth/sign-in/credentials gonderiliyor...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            json=payload,
-            timeout=15,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
         )
-        print(f"[RENDER LOG] [2/6] sign-in yanit alindi: HTTP {r.status_code} | {r.text[:120]}", flush=True)
         r.raise_for_status()
         data = r.json()
         self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
 
     def get_session(self):
-        print(f"[RENDER LOG] [3/6] GET /v1/auth/get-session gonderiliyor...", flush=True)
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
-            timeout=15,
         )
-        print(f"[RENDER LOG] [3/6] get-session yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
@@ -260,37 +277,30 @@ class UseAIClient:
         data = r.json()
         if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
-        print(f"[RENDER LOG] [3/6] JWT alindi (uzunluk: {len(self.jwt)})", flush=True)
 
     def set_model(self, model: str = DEFAULT_MODEL):
-        print(f"[RENDER LOG] [4/6] POST /v1/chat/set-model gonderiliyor ({model})...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/chat/set-model",
-            json={"model": model},
-            timeout=15,
+            headers={"content-type": "application/json"},
+            data=json.dumps({"model": model}),
         )
-        print(f"[RENDER LOG] [4/6] set-model yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
         self.model = model
 
     def app_attestation(self):
-        print(f"[RENDER LOG] [5/6] POST /v1/auth/app-attestation gonderiliyor...", flush=True)
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            json={},
-            timeout=15,
+            headers={"content-type": "application/json"},
+            data="{}",
         )
-        print(f"[RENDER LOG] [5/6] app-attestation yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
         self.app_token = r.json()["token"]
-        print(f"[RENDER LOG] [5/6] App token alindi (uzunluk: {len(self.app_token)})", flush=True)
 
     def vote(self, chat_id: str | None = None):
         if chat_id:
             self.chat_id = chat_id
         elif not self.chat_id:
             self.chat_id = str(uuid.uuid4())
-        print(f"[RENDER LOG] [6/6] GET {AGENTS_BASE}/vote gonderiliyor (chatId={self.chat_id})...", flush=True)
         r = self.session.get(
             f"{AGENTS_BASE}/vote",
             params={"chatId": self.chat_id},
@@ -298,15 +308,12 @@ class UseAIClient:
                 "authorization": f"Bearer {self.jwt}",
                 "x-guest-user-id": f"guest:{self.guest_id}",
             },
-            timeout=15,
         )
-        print(f"[RENDER LOG] [6/6] vote yanit alindi: HTTP {r.status_code}", flush=True)
         r.raise_for_status()
         return self.chat_id
 
     def refresh_auth(self):
         """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
-        print("[RENDER LOG] refresh_auth cagrildi...", flush=True)
         try:
             self.get_session()
         except Exception:
@@ -322,18 +329,14 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        print(f"[RENDER LOG] ========================================", flush=True)
-        print(f"[RENDER LOG] BOOTSTRAP BASLADI (model={model})", flush=True)
-        self.init_session()
-        self.email_login()
-        self.sign_in()
-        self.get_session()
-        self.set_model(model)
-        self.app_attestation()
-        self.vote()
+        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.email_login()  # 2. Email login
+        self.sign_in()  # 3. Credentials sign in
+        self.get_session()  # 4. Get session & JWT
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
-        print(f"[RENDER LOG] BOOTSTRAP BASARIYLA TAMAMLANDI!", flush=True)
-        print(f"[RENDER LOG] ========================================", flush=True)
 
 
 def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
@@ -1205,19 +1208,10 @@ def api_upload():
         "file": (filename, file_bytes, mime),
     }
     try:
-        cookie_dict = (
-            client.session.cookies.get_dict()
-            if hasattr(client.session.cookies, "get_dict")
-            else dict(client.session.cookies)
-        )
-        r = requests.post(
+        r = client.session.post(
             f"{FILES_BASE}/upload",
             files=files,
-            headers={
-                "authorization": f"Bearer {client.jwt}",
-                "user-agent": UA,
-            },
-            cookies=cookie_dict,
+            headers={"authorization": f"Bearer {client.jwt}"},
             timeout=60,
         )
     except Exception as e:
@@ -1381,16 +1375,11 @@ def api_reset():
     sess["model"] = model
     sess["conversations"] = old_conversations
 
-    print(f"[RENDER LOG] ---> POST /api/reset cagrildi (model={model}, carry={carry})...", flush=True)
     try:
         client = UseAIClient()
         client.bootstrap(model=model)
         sess["client"] = client
-        print(f"[RENDER LOG] ---> /api/reset hesap basariyla olusturuldu: {client.email}", flush=True)
     except Exception as e:
-        print(f"[RENDER LOG] [HATA] /api/reset sirasinda HATA OLUSTU: {str(e)}", flush=True)
-        import traceback
-        traceback.print_exc()
         if old_sess:
             _sessions[sid] = old_sess
         return (
@@ -1414,7 +1403,6 @@ def api_reset():
     }
     resp = jsonify(resp_data)
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
-    print(f"[RENDER LOG] ---> /api/reset HTTP 200 donuyor!", flush=True)
     return resp
 
 
