@@ -329,7 +329,7 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. GET /tr ile çerezleri topla
+        #self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
