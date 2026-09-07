@@ -252,6 +252,16 @@ class UseAIClient:
         new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
             self.jwt = new_jwt
+        else:
+            try:
+                r_tok = self.session.get(
+                    f"{API_BASE}/v1/auth/token",
+                    headers={"origin": "https://use.ai", "referer": "https://use.ai/tr"},
+                )
+                if r_tok.status_code == 200:
+                    self.jwt = r_tok.json().get("token", self.jwt)
+            except Exception:
+                pass
         data = r.json()
         if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
@@ -676,8 +686,14 @@ def stream_message(
                 _build_ws_url(client, current_room),
                 headers={
                     "Origin": ORIGIN,
+                    "User-Agent": UA,
                     "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
                 },
+                cookies=client.session.cookies,
+                impersonate="chrome120",
+                timeout=WS_CONNECT_TIMEOUT,
             )
         except Exception as e:
             connect_err = e
