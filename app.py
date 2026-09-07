@@ -9,6 +9,7 @@ import string
 import time
 import urllib.parse
 import uuid
+import ssl
 from datetime import datetime
 
 import requests
@@ -29,9 +30,15 @@ ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
+
+SSL_CIPHERS = (
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -211,28 +218,12 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
+        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
         self.session = new_session()
-        r = self.session.get(
-            f"{API_BASE}/tr",
-            headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-            },
-        )
-        r.raise_for_status()
-
-        # Çerezleri otomatik yakala, yoksa yeni UUID üret
-        self.mixpanel_id = self.session.cookies.get(
-            "guest_mixpanel_id"
-        ) or str(uuid.uuid4())
-        self.guest_id = self.session.cookies.get("guest_user_id") or str(
-            uuid.uuid4()
-        )
+        self.mixpanel_id = str(uuid.uuid4())
+        self.guest_id = str(uuid.uuid4())
+        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
+        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
     def email_login(self):
         if self.session is None:
@@ -329,7 +320,7 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        #self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
@@ -534,6 +525,8 @@ def _build_ws_url(client, agent_room):
         f"&userEmail={encoded_email}"
         f"&planType=free"
         f"&isTestUser=false"
+        f"&freemiumFunnel=false"
+        f"&botd_verdict=clean"
     )
 
 
@@ -684,10 +677,13 @@ def stream_message(
         connect_err = None
 
         try:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.set_ciphers(SSL_CIPHERS)
             ws_headers = _build_ws_headers(client)
             ws = websocket.create_connection(
                 _build_ws_url(client, current_room),
                 origin=ORIGIN,
+                sslopt={"context": ssl_ctx},
                 header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
             )
