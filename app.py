@@ -200,6 +200,13 @@ class UseAIClient:
             pass
         self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
         self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
+        user_geo = "%7B%22country%22%3A%22TR%22%2C%22currency%22%3A%22TRY%22%2C%22currencyCode%22%3A%22TRY%22%2C%22currencySymbol%22%3A%22%E2%82%BA%22%2C%22ip%22%3A%2295.13.70.53%22%2C%22region%22%3A%2234%22%2C%22regionName%22%3A%22Istanbul%22%2C%22countryName%22%3A%22Turkey%22%2C%22symbolAtStart%22%3Atrue%2C%22usdExchangeRate%22%3A34.2904%2C%22eurExchangeRate%22%3A36.9815%7D"
+        if not self.session.cookies.get("user-geo"):
+            self.session.cookies.set("user-geo", user_geo, domain=".use.ai")
+        self.session.cookies.set("chat-model", self.model, domain=".use.ai")
+        self.session.cookies.set("mp_mid", self.mixpanel_id, domain=".use.ai")
+        self.session.cookies.set("mp_device_id", self.device_id, domain=".use.ai")
+        self.session.cookies.set("gbuuid", str(uuid.uuid4()), domain=".use.ai")
 
     def email_login(self):
         if self.session is None:
@@ -279,6 +286,7 @@ class UseAIClient:
         )
         r.raise_for_status()
         self.model = model
+        self.session.cookies.set("chat-model", model, domain=".use.ai")
 
     def app_attestation(self):
         r = self.session.post(
@@ -684,16 +692,24 @@ def stream_message(
         ws = None
         connect_err = None
 
+        cookie_str = "; ".join(
+            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+        )
+        ws_headers = {
+            "Origin": ORIGIN,
+            "Referer": "https://use.ai/tr",
+            "User-Agent": UA,
+            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+        if cookie_str:
+            ws_headers["Cookie"] = cookie_str
+
         try:
             ws = client.session.ws_connect(
                 _build_ws_url(client, room),
-                headers={
-                    "Origin": ORIGIN,
-                    "User-Agent": UA,
-                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache",
-                },
+                headers=ws_headers,
                 cookies=client.session.cookies,
                 impersonate="chrome120",
                 http_version=CurlHttpVersion.V1_1,
