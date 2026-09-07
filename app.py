@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 
 from curl_cffi import requests
+from curl_cffi.curl import CurlHttpVersion
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -303,6 +304,8 @@ class UseAIClient:
             headers={
                 "authorization": f"Bearer {self.jwt}",
                 "x-guest-user-id": f"guest:{self.guest_id}",
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr",
             },
         )
         r.raise_for_status()
@@ -677,13 +680,13 @@ def stream_message(
             payload["email"] = client.email
             payload["mixpanelUserId"] = client.mixpanel_id
 
-        current_room = str(uuid.uuid4())
+        room = client.chat_id or str(uuid.uuid4())
         ws = None
         connect_err = None
 
         try:
             ws = client.session.ws_connect(
-                _build_ws_url(client, current_room),
+                _build_ws_url(client, room),
                 headers={
                     "Origin": ORIGIN,
                     "User-Agent": UA,
@@ -693,6 +696,7 @@ def stream_message(
                 },
                 cookies=client.session.cookies,
                 impersonate="chrome120",
+                http_version=CurlHttpVersion.V1_1,
                 timeout=WS_CONNECT_TIMEOUT,
             )
         except Exception as e:
