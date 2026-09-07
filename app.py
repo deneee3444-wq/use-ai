@@ -9,11 +9,9 @@ import string
 import time
 import urllib.parse
 import uuid
-import ssl
 from datetime import datetime
 
-import requests
-import websocket
+from curl_cffi import requests
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -25,7 +23,7 @@ app.config["PROPAGATE_EXCEPTIONS"] = False
 API_BASE = "https://api.use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
-WS_BASE = "wss://use.ai/agent"
+WS_BASE = "wss://use.ai"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
@@ -33,12 +31,6 @@ UA = (
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
-
-SSL_CIPHERS = (
-    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
-    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
-)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -173,34 +165,6 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 
-def new_session() -> requests.Session:
-    s = requests.Session()
-    s.headers.update(
-        {
-            "accept": "*/*",
-            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "origin": ORIGIN,
-            "referer": REFERER,
-            "user-agent": UA,
-            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
-        }
-    )
-    return s
-
-
-def guess_mime(path: str, filename: str = None) -> str:
-    if filename:
-        mt, _ = mimetypes.guess_type(filename)
-    else:
-        mt, _ = mimetypes.guess_type(path)
-    return mt or "application/octet-stream"
-
-
 class UseAIClient:
 
     def __init__(self):
@@ -218,10 +182,21 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
-        self.session = new_session()
+        """curl_cffi Chrome impersonation ile oturumu ve temel çerezleri başlatır."""
+        self.session = requests.Session(impersonate="chrome120")
         self.mixpanel_id = str(uuid.uuid4())
         self.guest_id = str(uuid.uuid4())
+        try:
+            self.session.get("https://use.ai/tr", headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1",
+            })
+        except Exception:
+            pass
         self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
         self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
@@ -233,8 +208,12 @@ class UseAIClient:
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
+            headers={
+                "content-type": "application/json",
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr?authmodal=true",
+            },
+            json=payload,
         )
         r.raise_for_status()
 
@@ -248,8 +227,12 @@ class UseAIClient:
         }
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
+            headers={
+                "content-type": "application/json",
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr?authmodal=true",
+            },
+            json=payload,
         )
         r.raise_for_status()
         data = r.json()
@@ -260,6 +243,10 @@ class UseAIClient:
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
+            headers={
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr",
+            },
         )
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
@@ -272,8 +259,12 @@ class UseAIClient:
     def set_model(self, model: str = DEFAULT_MODEL):
         r = self.session.post(
             f"{API_BASE}/v1/chat/set-model",
-            headers={"content-type": "application/json"},
-            data=json.dumps({"model": model}),
+            headers={
+                "content-type": "application/json",
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr",
+            },
+            json={"model": model},
         )
         r.raise_for_status()
         self.model = model
@@ -281,11 +272,15 @@ class UseAIClient:
     def app_attestation(self):
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            headers={"content-type": "application/json"},
+            headers={
+                "content-type": "application/json",
+                "origin": "https://use.ai",
+                "referer": "https://use.ai/tr",
+            },
             data="{}",
         )
         r.raise_for_status()
-        self.app_token = r.json()["token"]
+        self.app_token = r.json().get("token", "")
 
     def vote(self, chat_id: str | None = None):
         if chat_id:
@@ -517,7 +512,7 @@ def _switch_to_conv(sess, conv_id):
 def _build_ws_url(client, agent_room):
     encoded_email = urllib.parse.quote(client.email)
     return (
-        f"{WS_BASE}/agents/budget-agent/{agent_room}"
+        f"{WS_BASE}/agent/agents/budget-agent/{agent_room}"
         f"?token={client.jwt}"
         f"&app_token={client.app_token}"
         f"&userId={client.user_id}"
@@ -677,15 +672,12 @@ def stream_message(
         connect_err = None
 
         try:
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.set_ciphers(SSL_CIPHERS)
-            ws_headers = _build_ws_headers(client)
-            ws = websocket.create_connection(
+            ws = client.session.ws_connect(
                 _build_ws_url(client, current_room),
-                origin=ORIGIN,
-                sslopt={"context": ssl_ctx},
-                header=ws_headers,
-                timeout=WS_CONNECT_TIMEOUT,
+                headers={
+                    "Origin": ORIGIN,
+                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                },
             )
         except Exception as e:
             connect_err = e
@@ -698,7 +690,6 @@ def stream_message(
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
-        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -710,12 +701,10 @@ def stream_message(
         finished = False
         fatal_error = None
         client_gone = False
-        last_data = time.time()
-        last_ping = time.time()
 
         try:
             try:
-                ws.send(json.dumps(payload))
+                ws.send_str(json.dumps(payload))
 
                 while True:
                     if sess.get("aborted"):
@@ -725,17 +714,7 @@ def stream_message(
                             break
 
                     try:
-                        raw = ws.recv()
-                    except websocket.WebSocketTimeoutException:
-                        now = time.time()
-                        if now - last_data > IDLE_TIMEOUT:
-                            break
-                        if now - last_ping > PING_INTERVAL and not sess.get(
-                            "aborted"
-                        ):
-                            last_ping = now
-                            yield ": keepalive\n\n"
-                        continue
+                        raw = ws.recv_str()
                     except Exception:
                         break
 
