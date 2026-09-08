@@ -1,5 +1,4 @@
 flask
-gunicorn
-curl_cffi
-websocket
 requests
+gunicorn
+websocket-client>=1.6.0
