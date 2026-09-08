@@ -26,7 +26,7 @@ PROXY_HOST = "p.webshare.io"
 PROXY_PORT = 80
 PROXY_USER = "uyvnbarw-1"
 PROXY_PASS = "hk5g6mfxwz44"
-PROXY_URL = f"https://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+PROXY_URL = "https": "http://nrrbciri-1:5cauzsujeluf@p.webshare.io:80"
 
 # ===================== CONSTANTS =====================
 API_BASE = "https://api.use.ai"
