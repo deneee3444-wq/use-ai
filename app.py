@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UseAI - Flask Web Interface (curl_cffi edition, native WS)"""
+"""UseAI - Flask Web Interface"""
 
 import json
 import mimetypes
@@ -9,35 +9,24 @@ import string
 import time
 import urllib.parse
 import uuid
+import ssl
 from datetime import datetime
 
-from curl_cffi import requests as cffi_requests  # noqa: F401
-from curl_cffi.requests import Session as CffiSession
-
-# --- Sürüm-güvenli exception importları ---
-try:
-    from curl_cffi.requests.exceptions import Timeout as CffiTimeout
-except ImportError:
-    try:
-        from curl_cffi.requests.errors import RequestsError as CffiTimeout  # type: ignore
-    except ImportError:
-        class CffiTimeout(Exception):
-            pass
-
-try:
-    from curl_cffi.requests.exceptions import WebSocketError as CffiWSError
-except ImportError:
-    try:
-        from curl_cffi.requests.errors import WebSocketError as CffiWSError  # type: ignore
-    except ImportError:
-        class CffiWSError(Exception):
-            pass
-
+import requests
+import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+# debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
+
+# ===================== PROXY CONFIG =====================
+PROXY_HOST = "p.webshare.io"
+PROXY_PORT = 80
+PROXY_USER = "uyvnbarw-1"
+PROXY_PASS = "hk5g6mfxwz44"
+PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # ===================== CONSTANTS =====================
 API_BASE = "https://api.use.ai"
@@ -52,13 +41,18 @@ UA = (
 )
 APP_PASSWORD = "123"
 
-IMPERSONATE = "chrome120"
+SSL_CIPHERS = (
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+)
 
-IDLE_TIMEOUT = 180.0
-PING_INTERVAL = 15.0
-WS_CONNECT_TIMEOUT = 25
-WS_RECV_POLL = 0.5  # saniye
+# Akış davranışı
+IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
+PING_INTERVAL = 15.0  # SSE keepalive aralığı
+WS_CONNECT_TIMEOUT = 25  # handshake timeout
 
+# ---------- MODEL KATALOĞU (chat) ----------
 MODELS = {
     "POPÜLER MODELLER": {
         "Sonnet 5": "gateway-sonnet-5",
@@ -115,6 +109,7 @@ MODELS = {
 
 DEFAULT_MODEL = "gateway-opus-5"
 
+# ---------- IMAGE MODELS ----------
 IMAGE_MODELS = [
     {"id": "nano-banana", "label": "Nano Banana", "provider": "openrouter"},
     {"id": "nano-banana-2", "label": "Nano Banana 2", "provider": "openrouter"},
@@ -178,12 +173,19 @@ def new_sess(sid):
 
 
 def rand_email() -> str:
-    local = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    """10 haneli rastgele prefix üreterek @spamok.com döndürür."""
+    local = "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=10)
+    )
     return f"{local}@spamok.com"
 
 
-def new_session() -> CffiSession:
-    s = CffiSession(impersonate=IMPERSONATE)
+def new_session() -> requests.Session:
+    s = requests.Session()
+    s.proxies = {
+        "http": PROXY_URL,
+        "https": PROXY_URL,
+    }
     s.headers.update(
         {
             "accept": "*/*",
@@ -213,7 +215,7 @@ def guess_mime(path: str, filename: str = None) -> str:
 class UseAIClient:
 
     def __init__(self):
-        self.session: CffiSession | None = None
+        self.session: requests.Session | None = None
         self.email: str = ""
         self.user_id: str = ""
         self.mixpanel_id: str = ""
@@ -227,6 +229,7 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
+        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
         self.session = new_session()
         self.mixpanel_id = str(uuid.uuid4())
         self.guest_id = str(uuid.uuid4())
@@ -243,7 +246,6 @@ class UseAIClient:
             f"{API_BASE}/v1/auth/email-login",
             headers={"content-type": "application/json"},
             data=json.dumps(payload),
-            impersonate=IMPERSONATE,
         )
         r.raise_for_status()
 
@@ -259,7 +261,6 @@ class UseAIClient:
             f"{API_BASE}/v1/auth/sign-in/credentials",
             headers={"content-type": "application/json"},
             data=json.dumps(payload),
-            impersonate=IMPERSONATE,
         )
         r.raise_for_status()
         data = r.json()
@@ -270,7 +271,6 @@ class UseAIClient:
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
-            impersonate=IMPERSONATE,
         )
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
@@ -285,7 +285,6 @@ class UseAIClient:
             f"{API_BASE}/v1/chat/set-model",
             headers={"content-type": "application/json"},
             data=json.dumps({"model": model}),
-            impersonate=IMPERSONATE,
         )
         r.raise_for_status()
         self.model = model
@@ -295,7 +294,6 @@ class UseAIClient:
             f"{API_BASE}/v1/auth/app-attestation",
             headers={"content-type": "application/json"},
             data="{}",
-            impersonate=IMPERSONATE,
         )
         r.raise_for_status()
         self.app_token = r.json()["token"]
@@ -305,37 +303,19 @@ class UseAIClient:
             self.chat_id = chat_id
         elif not self.chat_id:
             self.chat_id = str(uuid.uuid4())
-
-        headers = {
-            "authorization": f"Bearer {self.jwt}",
-            "x-guest-user-id": f"guest:{self.guest_id}",
-            "referer": f"https://use.ai/tr/{self.chat_id}",
-        }
-
-        try:
-            r = self.session.get(
-                "https://use.ai/agent/vote",
-                params={"chatId": self.chat_id},
-                headers=headers,
-                timeout=5,
-                impersonate=IMPERSONATE,
-            )
-            if r.status_code == 200:
-                return self.chat_id
-        except Exception:
-            pass
-
         r = self.session.get(
             f"{AGENTS_BASE}/vote",
             params={"chatId": self.chat_id},
-            headers=headers,
-            timeout=10,
-            impersonate=IMPERSONATE,
+            headers={
+                "authorization": f"Bearer {self.jwt}",
+                "x-guest-user-id": f"guest:{self.guest_id}",
+            },
         )
         r.raise_for_status()
         return self.chat_id
 
     def refresh_auth(self):
+        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
         try:
             self.get_session()
         except Exception:
@@ -351,17 +331,18 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()
-        self.email_login()
-        self.sign_in()
-        self.get_session()
-        self.set_model(model)
-        self.app_attestation()
-        self.vote()
+        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.email_login()  # 2. Email login
+        self.sign_in()  # 3. Credentials sign in
+        self.get_session()  # 4. Get session & JWT
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
 def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
+    """URL'in sonundaki gerçek dosya ismini (decoded) döner."""
     if default_name and str(default_name).strip():
         name = str(default_name).strip()
         if "%2F" in name or "%2f" in name:
@@ -377,6 +358,7 @@ def get_filename_from_url(url: str | None, default_name: str | None = None) -> s
 
 
 def normalize_url(url: str | None) -> str:
+    """Her zaman tam (https://...) URL döndürür."""
     if not url:
         return ""
     u = str(url).strip()
@@ -389,7 +371,13 @@ def normalize_url(url: str | None) -> str:
     return f"https://{u}"
 
 
-def append_history(history, role, text, attachments=None, images=None):
+def append_history(
+    history: list[dict],
+    role: str,
+    text: str,
+    attachments: list[dict] | None = None,
+    images: list[str | dict] | None = None,
+) -> dict:
     entry = {
         "role": role,
         "text": text,
@@ -411,6 +399,7 @@ def append_history(history, role, text, attachments=None, images=None):
 
 
 def _clean_image_list(items):
+    """Görsel listesini (str veya dict) temiz dict listesine çevirir."""
     result = []
     for item in items:
         if isinstance(item, dict):
@@ -425,7 +414,7 @@ def _clean_image_list(items):
     return result
 
 
-def format_history_prefix(history):
+def format_history_prefix(history: list[dict]) -> str:
     if not history:
         return ""
     history_json = json.dumps(history, ensure_ascii=False, indent=2)
@@ -453,7 +442,11 @@ def _derive_title(history):
                 content = turn.get("content")
                 if isinstance(content, list):
                     text = next(
-                        (i.get("text", "") for i in content if i.get("type") == "text"),
+                        (
+                            i.get("text", "")
+                            for i in content
+                            if i.get("type") == "text"
+                        ),
                         "",
                     )
                 else:
@@ -467,6 +460,7 @@ def _derive_title(history):
 
 
 def set_turn_content(turn, text, image_urls=None):
+    """Asistan turunu YERİNDE günceller."""
     turn["text"] = text
     if image_urls:
         turn["generatedImages"] = _clean_image_list(image_urls)
@@ -478,7 +472,8 @@ def save_conv_to_history(sess):
         return
 
     valid_turns = [
-        t for t in history
+        t
+        for t in history
         if t.get("text") or t.get("attachments") or t.get("generatedImages")
     ]
     if not valid_turns:
@@ -529,7 +524,7 @@ def _switch_to_conv(sess, conv_id):
     return False, None, 0
 
 
-# ===================== WS HELPERS =====================
+# ===================== CHAT STREAM =====================
 def _build_ws_url(client, agent_room):
     encoded_email = urllib.parse.quote(client.email)
     return (
@@ -549,81 +544,20 @@ def _build_ws_url(client, agent_room):
 def _build_ws_headers(client):
     cookie_str = ""
     if client and client.session:
-        try:
-            cookies_dict = {c.name: c.value for c in client.session.cookies.jar}
-        except Exception:
-            try:
-                cookies_dict = dict(client.session.cookies.get_dict())
-            except Exception:
-                cookies_dict = {}
-        cookie_str = "; ".join(f"{k}={v}" for k, v in cookies_dict.items())
-
-    headers = {
-        "User-Agent": UA,
-        "Origin": ORIGIN,
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-    }
+        cookie_str = "; ".join(
+            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+        )
+    headers = [
+        f"User-Agent: {UA}",
+        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control: no-cache",
+        "Pragma: no-cache",
+    ]
     if cookie_str:
-        headers["Cookie"] = cookie_str
+        headers.append(f"Cookie: {cookie_str}")
     return headers
 
 
-def _ws_recv(ws, timeout=WS_RECV_POLL):
-    """
-    curl_cffi WS: recv() bloklayıcı, tuple veya bytes döndürür.
-    Timeout durumunda None döner.
-    """
-    try:
-        result = ws.recv(timeout=timeout)
-    except TypeError:
-        try:
-            ws.settimeout(timeout)
-        except Exception:
-            pass
-        try:
-            result = ws.recv()
-        except CffiTimeout:
-            return None
-        except Exception:
-            return None
-    except CffiTimeout:
-        return None
-    except Exception:
-        return None
-
-    if result is None:
-        return None
-    if isinstance(result, tuple):
-        data = result[0]
-    else:
-        data = result
-    if data is None:
-        return None
-    if isinstance(data, (bytes, bytearray)):
-        try:
-            data = data.decode("utf-8", errors="ignore")
-        except Exception:
-            return None
-    return data
-
-
-def _ws_send(ws, text):
-    try:
-        ws.send(text)
-    except TypeError:
-        ws.send_str(text)
-
-
-def _ws_close(ws):
-    try:
-        ws.close()
-    except Exception:
-        pass
-
-
-# ===================== CHAT STREAM =====================
 def stream_message(
     client,
     text_message,
@@ -637,7 +571,10 @@ def stream_message(
     on_delta=None,
     on_images=None,
 ):
-    user_msg_id = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+    agent_room = str(uuid.uuid4())
+    user_msg_id = "".join(
+        random.choices(string.ascii_letters + string.digits, k=16)
+    )
 
     parts = []
     if attachments:
@@ -645,7 +582,8 @@ def stream_message(
             parts.append(
                 {
                     "type": "file",
-                    "mediaType": a.get("mediaType") or a.get("type", "image/jpeg"),
+                    "mediaType": a.get("mediaType")
+                    or a.get("type", "image/jpeg"),
                     "filename": a.get("filename") or a.get("name", "file"),
                     "url": normalize_url(a.get("url")),
                 }
@@ -685,7 +623,8 @@ def stream_message(
     }
 
     source = (
-        "image_funnel" if image_mode
+        "image_funnel"
+        if image_mode
         else ("websearch" if web_search else "chat_page")
     )
 
@@ -717,6 +656,7 @@ def stream_message(
         "trigger": "submit-message",
         "source": source,
     }
+
     if image_mode:
         payload["imageCount"] = IMAGE_COUNT
         payload["imageGenerationModel"] = resolved_img_model
@@ -744,29 +684,35 @@ def stream_message(
             payload["mixpanelUserId"] = client.mixpanel_id
 
         current_room = str(uuid.uuid4())
-        ws_url = _build_ws_url(client, current_room)
-        ws_headers = _build_ws_headers(client)
-
         ws = None
         connect_err = None
+
         try:
-            ws = client.session.ws_connect(
-                ws_url,
-                headers=ws_headers,
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.set_ciphers(SSL_CIPHERS)
+            ws_headers = _build_ws_headers(client)
+            ws = websocket.create_connection(
+                _build_ws_url(client, current_room),
+                origin=ORIGIN,
+                sslopt={"context": ssl_ctx},
+                header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
+                http_proxy_host=PROXY_HOST,
+                http_proxy_port=PROXY_PORT,
+                http_proxy_auth=(PROXY_USER, PROXY_PASS),
             )
-        except (CffiWSError, CffiTimeout, Exception) as e:
+        except Exception as e:
             connect_err = e
             ws = None
-
-        if ws is None:
             if retry_cycle == 0:
                 continue
-            yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
-            return
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
+                return
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
+        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -783,7 +729,7 @@ def stream_message(
 
         try:
             try:
-                _ws_send(ws, json.dumps(payload))
+                ws.send(json.dumps(payload))
 
                 while True:
                     if sess.get("aborted"):
@@ -792,18 +738,22 @@ def stream_message(
                         elif time.time() - aborted_time > 1.5:
                             break
 
-                    raw = _ws_recv(ws, timeout=WS_RECV_POLL)
-
-                    if raw is None:
+                    try:
+                        raw = ws.recv()
+                    except websocket.WebSocketTimeoutException:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
-                        if now - last_ping > PING_INTERVAL and not sess.get("aborted"):
+                        if now - last_ping > PING_INTERVAL and not sess.get(
+                            "aborted"
+                        ):
                             last_ping = now
                             yield ": keepalive\n\n"
                         continue
+                    except Exception:
+                        break
 
-                    if raw == "":
+                    if not raw:
                         break
 
                     last_data = time.time()
@@ -844,7 +794,10 @@ def stream_message(
                                 if not sess.get("aborted"):
                                     yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-                        elif ct.startswith("tool-image-") and chunk.get("state") == "input-available":
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "input-available"
+                        ):
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
@@ -855,7 +808,10 @@ def stream_message(
                             if shortCopy and not sess.get("aborted"):
                                 yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
 
-                        elif ct.startswith("tool-image-") and chunk.get("state") == "output-available":
+                        elif (
+                            ct.startswith("tool-image-")
+                            and chunk.get("state") == "output-available"
+                        ):
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
@@ -873,7 +829,9 @@ def stream_message(
                                         {
                                             "type": "image",
                                             "url": u,
-                                            "mediaType": im.get("mimeType", "image/jpeg"),
+                                            "mediaType": im.get(
+                                                "mimeType", "image/jpeg"
+                                            ),
                                             "width": im.get("width"),
                                             "height": im.get("height"),
                                         }
@@ -899,8 +857,11 @@ def stream_message(
                 fatal_error = str(e)
 
         finally:
-            _ws_close(ws)
-            if sess.get("active_ws") is ws:
+            try:
+                ws.close()
+            except Exception:
+                pass
+            if sess.get("active_ws") == ws:
                 sess.pop("active_ws", None)
 
             if not rate_limited and (assistant_text or image_parts):
@@ -911,13 +872,18 @@ def stream_message(
 
                 client.messages.append(
                     {
-                        "id": assistant_id or "".join(
-                            random.choices(string.ascii_letters + string.digits, k=16)
+                        "id": assistant_id
+                        or "".join(
+                            random.choices(
+                                string.ascii_letters + string.digits, k=16
+                            )
                         ),
                         "role": "assistant",
                         "parts": asst_parts,
                         "metadata": {
-                            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                            "createdAt": time.strftime(
+                                "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
+                            ),
                             "modelId": client.model,
                         },
                     }
@@ -938,6 +904,7 @@ def stream_message(
         if client_gone:
             return
 
+        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: sessizce auth tazele ve tekrar bağlan
         if (
             not finished
             and not rate_limited
@@ -1060,7 +1027,9 @@ def api_init():
     sess = new_sess(sid)
     sess["app_unlocked"] = True
 
-    resp = jsonify({"success": True, "account_created": False, "model": sess["model"]})
+    resp = jsonify(
+        {"success": True, "account_created": False, "model": sess["model"]}
+    )
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
     return resp
 
@@ -1108,14 +1077,20 @@ def api_send():
                     existing_urls.add(p_url)
                     fname = past_att.get("filename") or get_filename_from_url(p_url)
                     mtype = past_att.get("mediaType") or guess_mime("", filename=fname)
-                    attachments.append({"url": p_url, "filename": fname, "mediaType": mtype})
+                    attachments.append({
+                        "url": p_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
             for gen_img in turn.get("generatedImages", []):
                 g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
                 if g_url and g_url not in existing_urls:
                     existing_urls.add(g_url)
                     fname = gen_img.get("filename") or get_filename_from_url(g_url) if isinstance(gen_img, dict) else get_filename_from_url(g_url)
                     mtype = gen_img.get("mediaType") or "image/jpeg" if isinstance(gen_img, dict) else "image/jpeg"
-                    attachments.append({"url": g_url, "filename": fname, "mediaType": mtype})
+                    attachments.append({
+                        "url": g_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
 
     is_new_conv = not sess.get("active_local_conv_id")
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
@@ -1131,14 +1106,27 @@ def api_send():
             return
         history_committed = True
         target_history = sess.setdefault("history", [])
-        append_history(target_history, "user", message, attachments=attachments or None)
-        assistant_turn = append_history(target_history, "assistant", "")
+        append_history(
+            target_history,
+            "user",
+            message,
+            attachments=attachments or None,
+        )
+        assistant_turn = append_history(
+            target_history,
+            "assistant",
+            "",
+        )
         save_conv_to_history(sess)
 
     web_search = data.get("web_search", sess.get("web_search", False))
     image_mode = data.get("image_mode", sess.get("image_mode", False))
-    image_model_id = data.get("image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID))
-    aspect_ratio = data.get("aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT))
+    image_model_id = data.get(
+        "image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID)
+    )
+    aspect_ratio = data.get(
+        "aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT)
+    )
 
     def on_start():
         commit_history_on_start()
@@ -1224,18 +1212,17 @@ def api_upload():
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
 
-    files = [
-        ("name", (None, filename)),
-        ("type", (None, mime)),
-        ("file", (filename, file_bytes, mime)),
-    ]
+    files = {
+        "name": (None, filename),
+        "type": (None, mime),
+        "file": (filename, file_bytes, mime),
+    }
     try:
         r = client.session.post(
             f"{FILES_BASE}/upload",
             files=files,
             headers={"authorization": f"Bearer {client.jwt}"},
             timeout=60,
-            impersonate=IMPERSONATE,
         )
     except Exception as e:
         return jsonify({"error": f"Yükleme hatası: {str(e)}"}), 500
@@ -1277,11 +1264,14 @@ def api_files():
             return
         seen.add(full_url)
 
-        mtype = media_type or guess_mime("", filename=filename or full_url.split("/")[-1])
+        mtype = media_type or guess_mime(
+            "", filename=filename or full_url.split("/")[-1]
+        )
         if source_type == "generated" and not (mtype and mtype.startswith("image/")):
             mtype = "image/jpeg"
 
         fname = filename or get_filename_from_url(full_url)
+
         files.append({"filename": fname, "mediaType": mtype, "url": full_url})
 
     def collect_from_turns(turns):
@@ -1295,16 +1285,14 @@ def api_files():
                 )
             for img in turn.get("generatedImages", []):
                 if isinstance(img, dict):
-                    add_file(
-                        img.get("url"),
-                        img.get("filename") or img.get("name"),
-                        img.get("mediaType") or img.get("type") or "image/jpeg",
-                        "generated",
-                    )
+                    add_file(img.get("url"), img.get("filename") or img.get("name"), img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
                 elif isinstance(img, str):
                     add_file(img, None, "image/jpeg", "generated")
 
+    # 1. Mevcut aktif konuşma geçmişi
     collect_from_turns(sess.get("history", []))
+
+    # 2. Kayıtlı diğer tüm konuşmalar
     for conv in sess.get("conversations", []):
         collect_from_turns(conv.get("history", []))
 
@@ -1485,6 +1473,7 @@ def api_history():
         role = turn.get("role")
         text = turn.get("text") or ""
 
+        # attachments
         clean_atts = []
         for a in turn.get("attachments", []):
             u = normalize_url(a.get("url"))
@@ -1492,6 +1481,7 @@ def api_history():
             mtype = a.get("mediaType") or a.get("type") or guess_mime("", filename=fname)
             clean_atts.append({"filename": fname, "mediaType": mtype, "url": u})
 
+        # generatedImages
         clean_gen_imgs = []
         for g in turn.get("generatedImages", []):
             if isinstance(g, dict):
@@ -1512,7 +1502,11 @@ def api_history():
         if content and not text:
             if isinstance(content, list):
                 text = next(
-                    (i.get("text", "") for i in content if i.get("type") == "text"),
+                    (
+                        i.get("text", "")
+                        for i in content
+                        if i.get("type") == "text"
+                    ),
                     "",
                 )
                 for ci in content:
