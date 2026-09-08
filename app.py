@@ -21,13 +21,6 @@ app.secret_key = os.urandom(24)
 # debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
-# ===================== PROXY CONFIG =====================
-PROXY_HOST = "p.webshare.io"
-PROXY_PORT = 80
-PROXY_USER = "uyvnbarw-1"
-PROXY_PASS = "hk5g6mfxwz44"
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
-
 # ===================== CONSTANTS =====================
 API_BASE = "https://api.use.ai"
 AGENTS_BASE = "https://agents.use.ai"
@@ -182,10 +175,6 @@ def rand_email() -> str:
 
 def new_session() -> requests.Session:
     s = requests.Session()
-    s.proxies = {
-        "http": PROXY_URL,
-        "https": PROXY_URL,
-    }
     s.headers.update(
         {
             "accept": "*/*",
@@ -267,6 +256,15 @@ class UseAIClient:
         self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
 
+    def get_auth_token(self):
+        """v1/auth/token endpoint'inden güncel JWT alır (set-auth-jwt header'ı dönmediğinde kesin kaynak)."""
+        r = self.session.get(f"{API_BASE}/v1/auth/token")
+        r.raise_for_status()
+        token = r.json().get("token")
+        if token:
+            self.jwt = token
+        return self.jwt
+
     def get_session(self):
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
@@ -279,6 +277,11 @@ class UseAIClient:
         data = r.json()
         if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
+        if not self.jwt:
+            try:
+                self.get_auth_token()
+            except Exception:
+                pass
 
     def set_model(self, model: str = DEFAULT_MODEL):
         r = self.session.post(
@@ -321,6 +324,10 @@ class UseAIClient:
         except Exception:
             pass
         try:
+            self.get_auth_token()
+        except Exception:
+            pass
+        try:
             self.app_attestation()
         except Exception:
             pass
@@ -335,9 +342,14 @@ class UseAIClient:
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
-        self.set_model(model)  # 5. Model seçimi
-        self.app_attestation()  # 6. App attestation token
-        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
+        if not self.jwt:
+            try:
+                self.get_auth_token()  # 5. Token garantisi (/v1/auth/token)
+            except Exception:
+                pass
+        self.set_model(model)  # 6. Model seçimi
+        self.app_attestation()  # 7. App attestation token
+        self.vote()  # 8. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
@@ -670,6 +682,12 @@ def stream_message(
         except Exception:
             client.chat_id = str(uuid.uuid4())
 
+    if not client.jwt:
+        try:
+            client.get_auth_token()
+        except Exception:
+            pass
+
     for retry_cycle in range(2):
         if retry_cycle > 0:
             try:
@@ -697,9 +715,6 @@ def stream_message(
                 sslopt={"context": ssl_ctx},
                 header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
-                http_proxy_host=PROXY_HOST,
-                http_proxy_port=PROXY_PORT,
-                http_proxy_auth=(PROXY_USER, PROXY_PASS),
             )
         except Exception as e:
             connect_err = e
@@ -1650,4 +1665,4 @@ if __name__ == "__main__":
     print("http://localhost:5000 adresine gidin")
     app.run(
         debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
-      )
+    )
