@@ -292,13 +292,32 @@ class UseAIClient:
             self.chat_id = chat_id
         elif not self.chat_id:
             self.chat_id = str(uuid.uuid4())
+
+        headers = {
+            "authorization": f"Bearer {self.jwt}",
+            "x-guest-user-id": f"guest:{self.guest_id}",
+            "referer": f"https://use.ai/tr/{self.chat_id}",
+        }
+
+        # 1. requestler.txt'teki güncel adres: https://use.ai/agent/vote
+        try:
+            r = self.session.get(
+                "https://use.ai/agent/vote",
+                params={"chatId": self.chat_id},
+                headers=headers,
+                timeout=5,
+            )
+            if r.status_code == 200:
+                return self.chat_id
+        except Exception:
+            pass
+
+        # 2. Backend doğrudan endpoint fallback: https://agents.use.ai/vote
         r = self.session.get(
             f"{AGENTS_BASE}/vote",
             params={"chatId": self.chat_id},
-            headers={
-                "authorization": f"Bearer {self.jwt}",
-                "x-guest-user-id": f"guest:{self.guest_id}",
-            },
+            headers=headers,
+            timeout=10,
         )
         r.raise_for_status()
         return self.chat_id
