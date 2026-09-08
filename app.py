@@ -724,7 +724,10 @@ def stream_message(
 
         try:
             ssl_ctx = ssl.create_default_context()
-            ssl_ctx.set_ciphers(SSL_CIPHERS)
+            try:
+                ssl_ctx.set_ciphers(SSL_CIPHERS)
+            except Exception:
+                pass
             ws_headers = _build_ws_headers(client)
             ws = websocket.create_connection(
                 _build_ws_url(client, current_room),
@@ -735,12 +738,25 @@ def stream_message(
             )
         except Exception as e:
             connect_err = e
-            ws = None
-            if retry_cycle == 0:
-                continue
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
-                return
+            try:
+                # Yedek deneme: Standart SSL context ile bağlanmayı dene
+                ws_headers = _build_ws_headers(client)
+                ws = websocket.create_connection(
+                    _build_ws_url(client, current_room),
+                    origin=ORIGIN,
+                    header=ws_headers,
+                    timeout=WS_CONNECT_TIMEOUT,
+                )
+            except Exception as e2:
+                connect_err = e2
+                ws = None
+
+            if ws is None:
+                if retry_cycle == 0:
+                    continue
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
+                    return
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
