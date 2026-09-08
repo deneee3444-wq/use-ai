@@ -9,14 +9,11 @@ import string
 import time
 import urllib.parse
 import uuid
+import ssl
 from datetime import datetime
 
-from select import select
-
-import requests as std_requests
+import requests
 import websocket
-from curl_cffi import requests
-from curl_cffi.curl import CurlECode, CurlError, CurlInfo, CurlWsFlag
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -25,17 +22,23 @@ app.secret_key = os.urandom(24)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "https://use.ai"
+API_BASE = "https://api.use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
-REFERER = "https://use.ai/tr"
+REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
+
+SSL_CIPHERS = (
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -171,72 +174,23 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    s = requests.Session(impersonate="chrome124")
+    s = requests.Session()
+    s.headers.update(
+        {
+            "accept": "*/*",
+            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "origin": ORIGIN,
+            "referer": REFERER,
+            "user-agent": UA,
+            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+        }
+    )
     return s
-
-
-class CurlWebSocketClient:
-    """curl_cffi WebSocket'ini websocket-client API'si ile uyumlu hale getiren sarmalayıcı."""
-
-    def __init__(self, ws):
-        self.ws = ws
-        self.timeout = 0.5
-        self.closed = False
-
-    def settimeout(self, timeout):
-        self.timeout = timeout
-
-    def send(self, data):
-        if self.closed or getattr(self.ws, "closed", False):
-            raise websocket.WebSocketClosed("WebSocket kapalı")
-        if isinstance(data, str):
-            return self.ws.send_str(data)
-        elif isinstance(data, bytes):
-            return self.ws.send_bytes(data)
-        return self.ws.send_str(str(data))
-
-    def recv(self):
-        if self.closed or getattr(self.ws, "closed", False):
-            return ""
-
-        sock_fd = self.ws.curl.getinfo(CurlInfo.ACTIVESOCKET)
-        if sock_fd == -1:
-            return ""
-
-        readable, _, _ = select([sock_fd], [], [], self.timeout)
-        if not readable:
-            raise websocket.WebSocketTimeoutException("Connection timed out")
-
-        chunks = []
-        while True:
-            try:
-                chunk, frame = self.ws.recv_fragment()
-            except CurlError as e:
-                if e.code == CurlECode.AGAIN:
-                    r, _, _ = select([sock_fd], [], [], 0.1)
-                    if not r:
-                        break
-                    continue
-                raise
-            except Exception:
-                break
-
-            chunks.append(chunk)
-            if frame.bytesleft == 0 and not (frame.flags & CurlWsFlag.CONT):
-                break
-
-        if not chunks:
-            return ""
-
-        full = b"".join(chunks)
-        return full.decode("utf-8", errors="ignore")
-
-    def close(self):
-        self.closed = True
-        try:
-            self.ws.close()
-        except Exception:
-            pass
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -264,49 +218,12 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
+        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
         self.session = new_session()
-        r = self.session.get(
-            f"{API_BASE}/tr",
-            headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-                "user-agent": UA,
-            },
-        )
-        r.raise_for_status()
-
-        # Çerezleri otomatik yakala, yoksa yeni UUID üret
-        self.mixpanel_id = self.session.cookies.get(
-            "guest_mixpanel_id"
-        ) or str(uuid.uuid4())
-        self.guest_id = self.session.cookies.get("guest_user_id") or str(
-            uuid.uuid4()
-        )
-
-        self.session.headers.update(
-            {
-                "accept": "*/*",
-                "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                "origin": ORIGIN,
-                "referer": f"{ORIGIN}/tr?authmodal=true",
-                "user-agent": UA,
-                "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-origin",
-            }
-        )
+        self.mixpanel_id = str(uuid.uuid4())
+        self.guest_id = str(uuid.uuid4())
+        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
+        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
     def email_login(self):
         if self.session is None:
@@ -316,7 +233,7 @@ class UseAIClient:
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            headers={"content-type": "application/json", "referer": f"{ORIGIN}/tr?authmodal=true"},
+            headers={"content-type": "application/json"},
             data=json.dumps(payload),
         )
         r.raise_for_status()
@@ -331,20 +248,18 @@ class UseAIClient:
         }
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            headers={"content-type": "application/json", "referer": f"{ORIGIN}/tr?authmodal=true"},
+            headers={"content-type": "application/json"},
             data=json.dumps(payload),
         )
         r.raise_for_status()
         data = r.json()
-        if "userId" in data:
-            self.user_id = data["userId"]
+        self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
 
     def get_session(self):
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
-            headers={"referer": f"{ORIGIN}/tr"},
         )
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
@@ -353,23 +268,11 @@ class UseAIClient:
         data = r.json()
         if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
-        if not self.jwt:
-            try:
-                rt = self.session.get(
-                    f"{API_BASE}/v1/auth/token",
-                    headers={"referer": f"{ORIGIN}/tr"},
-                )
-                if rt.status_code == 200:
-                    tok = rt.json().get("token")
-                    if tok:
-                        self.jwt = tok
-            except Exception:
-                pass
 
     def set_model(self, model: str = DEFAULT_MODEL):
         r = self.session.post(
             f"{API_BASE}/v1/chat/set-model",
-            headers={"content-type": "application/json", "referer": f"{ORIGIN}/tr"},
+            headers={"content-type": "application/json"},
             data=json.dumps({"model": model}),
         )
         r.raise_for_status()
@@ -378,13 +281,11 @@ class UseAIClient:
     def app_attestation(self):
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            headers={"content-type": "application/json", "referer": f"{ORIGIN}/tr"},
+            headers={"content-type": "application/json"},
             data="{}",
         )
         r.raise_for_status()
-        data = r.json()
-        if "token" in data:
-            self.app_token = data["token"]
+        self.app_token = r.json()["token"]
 
     def vote(self, chat_id: str | None = None):
         if chat_id:
@@ -397,8 +298,6 @@ class UseAIClient:
             headers={
                 "authorization": f"Bearer {self.jwt}",
                 "x-guest-user-id": f"guest:{self.guest_id}",
-                "sec-fetch-site": "same-site",
-                "referer": f"{ORIGIN}/tr",
             },
         )
         r.raise_for_status()
@@ -421,7 +320,7 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.init_session()  # 1. Session oluştur, guest ID'leri üret
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
@@ -778,16 +677,16 @@ def stream_message(
         connect_err = None
 
         try:
-            raw_ws = client.session.ws_connect(
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.set_ciphers(SSL_CIPHERS)
+            ws_headers = _build_ws_headers(client)
+            ws = websocket.create_connection(
                 _build_ws_url(client, current_room),
-                headers={
-                    "Origin": ORIGIN,
-                    "Referer": f"{ORIGIN}/tr",
-                    "User-Agent": UA,
-                },
+                origin=ORIGIN,
+                sslopt={"context": ssl_ctx},
+                header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
             )
-            ws = CurlWebSocketClient(raw_ws)
         except Exception as e:
             connect_err = e
             ws = None
@@ -1305,7 +1204,7 @@ def api_upload():
         "file": (filename, file_bytes, mime),
     }
     try:
-        r = std_requests.post(
+        r = client.session.post(
             f"{FILES_BASE}/upload",
             files=files,
             headers={"authorization": f"Bearer {client.jwt}"},
