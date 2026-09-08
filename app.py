@@ -13,7 +13,34 @@ import ssl
 from datetime import datetime
 
 import requests
-import websocket
+
+try:
+    import websocket
+    if not hasattr(websocket, "create_connection"):
+        # Render.com veya pip kaynaklı dummy 'websocket' paketi çakışması durumunda
+        # sys.path içindeki gerçek 'websocket-client' paket dizinini yükle
+        import sys
+        import importlib.util
+        for p in sys.path:
+            pkg_dir = os.path.join(p, "websocket")
+            init_file = os.path.join(pkg_dir, "__init__.py")
+            if os.path.isdir(pkg_dir) and os.path.isfile(init_file):
+                spec = importlib.util.spec_from_file_location("websocket", init_file, submodule_search_locations=[pkg_dir])
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules["websocket"] = mod
+                spec.loader.exec_module(mod)
+                websocket = mod
+                break
+        if not hasattr(websocket, "create_connection"):
+            import subprocess
+            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "websocket"], check=False)
+            subprocess.run([sys.executable, "-m", "pip", "install", "websocket-client>=1.6.0"], check=False)
+            import importlib
+            import websocket
+            websocket = importlib.reload(websocket)
+except Exception:
+    import websocket
+
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
