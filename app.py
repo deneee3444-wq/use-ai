@@ -690,6 +690,7 @@ def stream_message(
             )
         except Exception as e:
             connect_err = e
+            print(connect_err)
             ws = None
             if retry_cycle == 0:
                 continue
