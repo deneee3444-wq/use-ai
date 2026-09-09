@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UseAI - Flask Web Interface"""
+"""UseAI - Flask Web Interface (curl_cffi HTTP + WS, Cloudflare bypass)"""
 
 import json
 import mimetypes
@@ -9,19 +9,25 @@ import string
 import time
 import urllib.parse
 import uuid
-import ssl
 from datetime import datetime
 
-# Cloudflare TLS/JA3 bypass için curl_cffi kullanıyoruz.
-# API `requests` ile birebir uyumlu; sadece Session'a impersonate parametresi ekleniyor.
+# HTTP: Cloudflare TLS/JA3 bypass için curl_cffi
 from curl_cffi import requests
 
-import websocket
+# WS: aynı TLS parmak iziyle WebSocket (Render 403 fix)
+# curl_cffi >= 0.7 gerekli
+try:
+    from curl_cffi.requests.websockets import WebSocket as _CurlWS  # noqa: F401
+except Exception:
+    _CurlWS = None  # fallback yolu için
+
+# Sadece TimeoutException tipi için (mevcut kod uyumluluğu)
+import websocket as _wsclient
+
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
-# debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
@@ -37,22 +43,18 @@ UA = (
 )
 APP_PASSWORD = "123"
 
-# curl_cffi kendi TLS handshake'ini yönettiği için bu SSL_CIPHERS artık HTTP için
-# kullanılmıyor; sadece WebSocket (websocket-client) tarafında geçerli.
-SSL_CIPHERS = (
-    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
-    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
-)
+# curl_cffi Session için taklit edilecek Chrome sürümü.
+# 403 hâlâ gelirse: chrome131, chrome123, chrome120 dene.
+IMPERSONATE_BROWSER = os.getenv("IMPERSONATE_BROWSER", "chrome124")
 
-# curl_cffi Session için taklit edilecek tarayıcı parmak izi.
-# Cloudflare bloklarsa "chrome131", "chrome120", "chrome123" gibi alternatifleri dene.
-IMPERSONATE_BROWSER = "chrome124"
+# Opsiyonel: Render datacenter IP'leri CF'de bloklanırsa residential proxy ver
+# Örn: HTTP_PROXY_URL="http://user:pass@residential.example.com:8080"
+HTTP_PROXY_URL = os.getenv("HTTP_PROXY_URL", "").strip() or None
 
 # Akış davranışı
-IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
-PING_INTERVAL = 15.0  # SSE keepalive aralığı
-WS_CONNECT_TIMEOUT = 25  # handshake timeout
+IDLE_TIMEOUT = 180.0
+PING_INTERVAL = 15.0
+WS_CONNECT_TIMEOUT = 45  # Render cold-start için biraz cömert
 
 # ---------- MODEL KATALOĞU (chat) ----------
 MODELS = {
@@ -176,19 +178,18 @@ def new_sess(sid):
 
 
 def rand_email() -> str:
-    """10 haneli rastgele prefix üreterek @spamok.com döndürür."""
-    local = "".join(
-        random.choices(string.ascii_lowercase + string.digits, k=10)
-    )
+    local = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
     return f"{local}@spamok.com"
 
 
 def new_session():
     """
-    curl_cffi.requests.Session — Chrome TLS/JA3 parmak izini taklit eder.
-    Cloudflare bu handshake'i normal bir tarayıcı olarak görür, 403 yemezsin.
+    curl_cffi.requests.Session — Chrome TLS/JA3 taklidi.
+    Cloudflare tarafından normal tarayıcı olarak görülür.
     """
     s = requests.Session(impersonate=IMPERSONATE_BROWSER)
+    if HTTP_PROXY_URL:
+        s.proxies = {"http": HTTP_PROXY_URL, "https": HTTP_PROXY_URL}
     s.headers.update(
         {
             "accept": "*/*",
@@ -215,10 +216,60 @@ def guess_mime(path: str, filename: str = None) -> str:
     return mt or "application/octet-stream"
 
 
+# ===================== WS ADAPTER =====================
+class WSAdapter:
+    """
+    curl_cffi WebSocket'i websocket-client benzeri API'ye sarar.
+    settimeout / send / recv / close.
+    recv timeout → _wsclient.WebSocketTimeoutException fırlatır (mevcut kod uyumu).
+    """
+
+    def __init__(self, curl_ws):
+        self._ws = curl_ws
+        self._timeout = None
+
+    def settimeout(self, t):
+        self._timeout = t
+
+    def send(self, data):
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        self._ws.send(data)
+
+    def recv(self):
+        try:
+            data = self._ws.recv(timeout=self._timeout)
+        except TimeoutError:
+            raise _wsclient.WebSocketTimeoutException()
+        except Exception as e:
+            # curl_cffi bazı sürümlerde farklı istisna sınıfları döndürüyor
+            name = type(e).__name__.lower()
+            if "timeout" in name:
+                raise _wsclient.WebSocketTimeoutException()
+            raise
+
+        # curl_cffi genelde (bytes, flags) veya sadece bytes dönebiliyor
+        if isinstance(data, tuple):
+            data = data[0]
+        if isinstance(data, (bytes, bytearray)):
+            try:
+                return data.decode("utf-8")
+            except UnicodeDecodeError:
+                return ""
+        return data or ""
+
+    def close(self):
+        try:
+            self._ws.close()
+        except Exception:
+            pass
+
+
+# ===================== CLIENT =====================
 class UseAIClient:
 
     def __init__(self):
-        self.session = None  # curl_cffi.requests.Session
+        self.session = None
         self.email: str = ""
         self.user_id: str = ""
         self.mixpanel_id: str = ""
@@ -233,11 +284,9 @@ class UseAIClient:
 
     def init_session(self):
         """
-        Oturumu başlatır:
-          1) curl_cffi Session (Chrome TLS taklidi)
-          2) guest_user_id / guest_mixpanel_id çerezlerini set eder
-          3) https://use.ai/tr sayfasına GET atarak Cloudflare __cf_bm cookie'sini toplar
-             (bu warm-up olmadan bazı bölgelerde /v1/auth çağrıları 403 döner)
+        1) curl_cffi Session (Chrome TLS taklidi)
+        2) guest cookie'ler
+        3) GET https://use.ai/tr — Cloudflare __cf_bm cookie'sini toplar
         """
         self.session = new_session()
         self.mixpanel_id = str(uuid.uuid4())
@@ -245,7 +294,6 @@ class UseAIClient:
         self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
         self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
-        # Cloudflare warm-up — __cf_bm cookie'sini almak için gerçek sayfa ziyareti
         warmup_headers = {
             "accept": (
                 "text/html,application/xhtml+xml,application/xml;q=0.9,"
@@ -262,13 +310,18 @@ class UseAIClient:
         try:
             self.session.get(f"{ORIGIN}/tr", headers=warmup_headers, timeout=20)
         except Exception:
-            # Warm-up başarısız olursa da devam et; asıl çağrılar yine deneyecek.
+            pass
+
+    def refresh_cf_cookie(self):
+        """__cf_bm ~30 dk sonra bayatlar. WS handshake öncesi tazele."""
+        try:
+            self.session.get(f"{ORIGIN}/tr", timeout=15)
+        except Exception:
             pass
 
     def email_login(self):
         if self.session is None:
             self.init_session()
-
         self.email = rand_email()
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
         r = self.session.post(
@@ -344,7 +397,10 @@ class UseAIClient:
         return self.chat_id
 
     def refresh_auth(self):
-        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
+        try:
+            self.refresh_cf_cookie()
+        except Exception:
+            pass
         try:
             self.get_session()
         except Exception:
@@ -360,25 +416,38 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        # 1. Session + GET /tr ile Cloudflare __cf_bm çerezini topla
+        # 1. Session + GET /tr -> __cf_bm
         self.init_session()
-        # 2. Email login (guest email üret ve gönder)
+        # 2. Email login
         self.email_login()
-        # 3. Credentials sign in (userId elde et)
+        # 3. Sign-in credentials
         self.sign_in()
-        # 4. Get session -> JWT set-auth-jwt header'ından okunur
+        # 4. Get-session -> JWT
         self.get_session()
-        # 5. Chat modeli seç
+        # 5. Model seçimi
         self.set_model(model)
-        # 6. App attestation token
+        # 6. App attestation
         self.app_attestation()
-        # 7. Initial vote / chat_id hazırlığı
+        # 7. Initial vote / chat_id
         self.vote()
         self.messages = []
 
+    def open_ws(self, url: str, extra_headers: dict, timeout: int) -> WSAdapter:
+        """
+        curl_cffi WebSocket — HTTP session'ıyla aynı TLS/JA3 ve cookie jar.
+        Render'da Cloudflare 403'ünü çözen ana adım.
+        """
+        # ws_connect farklı sürümlerde farklı imzalar alabiliyor; en yaygın olan:
+        curl_ws = self.session.ws_connect(
+            url,
+            headers=extra_headers,
+            timeout=timeout,
+        )
+        return WSAdapter(curl_ws)
 
+
+# ===================== UTILS =====================
 def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
-    """URL'in sonundaki gerçek dosya ismini (decoded) döner."""
     if default_name and str(default_name).strip():
         name = str(default_name).strip()
         if "%2F" in name or "%2f" in name:
@@ -394,7 +463,6 @@ def get_filename_from_url(url: str | None, default_name: str | None = None) -> s
 
 
 def normalize_url(url: str | None) -> str:
-    """Her zaman tam (https://...) URL döndürür."""
     if not url:
         return ""
     u = str(url).strip()
@@ -407,13 +475,22 @@ def normalize_url(url: str | None) -> str:
     return f"https://{u}"
 
 
-def append_history(
-    history: list[dict],
-    role: str,
-    text: str,
-    attachments: list[dict] | None = None,
-    images: list[str | dict] | None = None,
-) -> dict:
+def _clean_image_list(items):
+    result = []
+    for item in items:
+        if isinstance(item, dict):
+            url = normalize_url(item.get("url"))
+            fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
+            mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
+        else:
+            url = normalize_url(item)
+            fname = get_filename_from_url(url)
+            mtype = "image/jpeg"
+        result.append({"filename": fname, "mediaType": mtype, "url": url})
+    return result
+
+
+def append_history(history, role, text, attachments=None, images=None):
     entry = {
         "role": role,
         "text": text,
@@ -434,23 +511,7 @@ def append_history(
     return entry
 
 
-def _clean_image_list(items):
-    """Görsel listesini (str veya dict) temiz dict listesine çevirir."""
-    result = []
-    for item in items:
-        if isinstance(item, dict):
-            url = normalize_url(item.get("url"))
-            fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
-            mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
-        else:
-            url = normalize_url(item)
-            fname = get_filename_from_url(url)
-            mtype = "image/jpeg"
-        result.append({"filename": fname, "mediaType": mtype, "url": url})
-    return result
-
-
-def format_history_prefix(history: list[dict]) -> str:
+def format_history_prefix(history):
     if not history:
         return ""
     history_json = json.dumps(history, ensure_ascii=False, indent=2)
@@ -477,14 +538,7 @@ def _derive_title(history):
             if not text and "content" in turn:
                 content = turn.get("content")
                 if isinstance(content, list):
-                    text = next(
-                        (
-                            i.get("text", "")
-                            for i in content
-                            if i.get("type") == "text"
-                        ),
-                        "",
-                    )
+                    text = next((i.get("text", "") for i in content if i.get("type") == "text"), "")
                 else:
                     text = str(content or "")
             if not text and turn.get("attachments"):
@@ -496,7 +550,6 @@ def _derive_title(history):
 
 
 def set_turn_content(turn, text, image_urls=None):
-    """Asistan turunu YERİNDE günceller."""
     turn["text"] = text
     if image_urls:
         turn["generatedImages"] = _clean_image_list(image_urls)
@@ -506,37 +559,21 @@ def save_conv_to_history(sess):
     history = sess.get("history")
     if not history:
         return
-
-    valid_turns = [
-        t
-        for t in history
-        if t.get("text") or t.get("attachments") or t.get("generatedImages")
-    ]
+    valid_turns = [t for t in history if t.get("text") or t.get("attachments") or t.get("generatedImages")]
     if not valid_turns:
         return
-
     convs = sess.setdefault("conversations", [])
     local_id = sess.get("active_local_conv_id")
-
     if not local_id:
         local_id = make_local_conv_id()
         sess["active_local_conv_id"] = local_id
-
     for c in convs:
         if c.get("conv_id") == local_id:
             c["history"] = history
             if not c.get("title_locked"):
                 c["title"] = _derive_title(history)
             return
-
-    convs.insert(
-        0,
-        {
-            "conv_id": local_id,
-            "title": _derive_title(history),
-            "history": history,
-        },
-    )
+    convs.insert(0, {"conv_id": local_id, "title": _derive_title(history), "history": history})
     sess["conversations"] = convs[:30]
 
 
@@ -545,7 +582,6 @@ def _switch_to_conv(sess, conv_id):
     for c in convs:
         if c.get("conv_id") == conv_id:
             save_conv_to_history(sess)
-
             client = sess.get("client")
             if client:
                 client.messages = []
@@ -553,7 +589,6 @@ def _switch_to_conv(sess, conv_id):
                     client.vote(str(uuid.uuid4()))
                 except Exception:
                     client.chat_id = str(uuid.uuid4())
-
             sess["history"] = c["history"]
             sess["active_local_conv_id"] = conv_id
             return True, conv_id, len(c["history"]) // 2
@@ -577,21 +612,18 @@ def _build_ws_url(client, agent_room):
     )
 
 
-def _build_ws_headers(client):
-    cookie_str = ""
-    if client and client.session:
-        cookie_str = "; ".join(
-            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
-        )
-    headers = [
-        f"User-Agent: {UA}",
-        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control: no-cache",
-        "Pragma: no-cache",
-    ]
-    if cookie_str:
-        headers.append(f"Cookie: {cookie_str}")
-    return headers
+def _build_ws_extra_headers():
+    # Cookie'ler zaten curl_cffi session'da; ekstra sadece browser hint header'ları
+    return {
+        "User-Agent": UA,
+        "Origin": ORIGIN,
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
 
 
 def stream_message(
@@ -607,31 +639,22 @@ def stream_message(
     on_delta=None,
     on_images=None,
 ):
-    agent_room = str(uuid.uuid4())
-    user_msg_id = "".join(
-        random.choices(string.ascii_letters + string.digits, k=16)
-    )
+    user_msg_id = "".join(random.choices(string.ascii_letters + string.digits, k=16))
 
     parts = []
     if attachments:
         for a in attachments:
-            parts.append(
-                {
-                    "type": "file",
-                    "mediaType": a.get("mediaType")
-                    or a.get("type", "image/jpeg"),
-                    "filename": a.get("filename") or a.get("name", "file"),
-                    "url": normalize_url(a.get("url")),
-                }
-            )
+            parts.append({
+                "type": "file",
+                "mediaType": a.get("mediaType") or a.get("type", "image/jpeg"),
+                "filename": a.get("filename") or a.get("name", "file"),
+                "url": normalize_url(a.get("url")),
+            })
     if text_message:
         parts.append({"type": "text", "text": text_message})
 
     resolved_img_model = image_model_id or DEFAULT_IMAGE_MODEL_ID
-    provider = next(
-        (m["provider"] for m in IMAGE_MODELS if m["id"] == resolved_img_model),
-        "openrouter",
-    )
+    provider = next((m["provider"] for m in IMAGE_MODELS if m["id"] == resolved_img_model), "openrouter")
 
     msg_metadata = {
         "isDeepResearchMode": False,
@@ -651,18 +674,8 @@ def stream_message(
         msg_metadata["imageCount"] = IMAGE_COUNT
         msg_metadata["source"] = "image_funnel"
 
-    user_message = {
-        "id": user_msg_id,
-        "role": "user",
-        "parts": parts,
-        "metadata": msg_metadata,
-    }
-
-    source = (
-        "image_funnel"
-        if image_mode
-        else ("websearch" if web_search else "chat_page")
-    )
+    user_message = {"id": user_msg_id, "role": "user", "parts": parts, "metadata": msg_metadata}
+    source = "image_funnel" if image_mode else ("websearch" if web_search else "chat_page")
 
     payload = {
         "chatId": client.chat_id,
@@ -692,7 +705,6 @@ def stream_message(
         "trigger": "submit-message",
         "source": source,
     }
-
     if image_mode:
         payload["imageCount"] = IMAGE_COUNT
         payload["imageGenerationModel"] = resolved_img_model
@@ -724,20 +736,21 @@ def stream_message(
         connect_err = None
 
         try:
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.set_ciphers(SSL_CIPHERS)
-            ws_headers = _build_ws_headers(client)
-            ws = websocket.create_connection(
-                _build_ws_url(client, current_room),
-                origin=ORIGIN,
-                sslopt={"context": ssl_ctx},
-                header=ws_headers,
+            ws_url = _build_ws_url(client, current_room)
+            ws = client.open_ws(
+                ws_url,
+                extra_headers=_build_ws_extra_headers(),
                 timeout=WS_CONNECT_TIMEOUT,
             )
         except Exception as e:
             connect_err = e
             ws = None
+            # 403/handshake fail → CF cookie bayatlamış olabilir, tazele ve tekrar dene
             if retry_cycle == 0:
+                try:
+                    client.refresh_cf_cookie()
+                except Exception:
+                    pass
                 continue
             else:
                 yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
@@ -773,13 +786,11 @@ def stream_message(
 
                     try:
                         raw = ws.recv()
-                    except websocket.WebSocketTimeoutException:
+                    except _wsclient.WebSocketTimeoutException:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
-                        if now - last_ping > PING_INTERVAL and not sess.get(
-                            "aborted"
-                        ):
+                        if now - last_ping > PING_INTERVAL and not sess.get("aborted"):
                             last_ping = now
                             yield ": keepalive\n\n"
                         continue
@@ -827,10 +838,7 @@ def stream_message(
                                 if not sess.get("aborted"):
                                     yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
-                        elif (
-                            ct.startswith("tool-image-")
-                            and chunk.get("state") == "input-available"
-                        ):
+                        elif ct.startswith("tool-image-") and chunk.get("state") == "input-available":
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
@@ -841,10 +849,7 @@ def stream_message(
                             if shortCopy and not sess.get("aborted"):
                                 yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
 
-                        elif (
-                            ct.startswith("tool-image-")
-                            and chunk.get("state") == "output-available"
-                        ):
+                        elif ct.startswith("tool-image-") and chunk.get("state") == "output-available":
                             if not start_fired:
                                 start_fired = True
                                 if on_start:
@@ -858,17 +863,13 @@ def stream_message(
                                 if u:
                                     urls.append(u)
                                     image_urls.append(u)
-                                    image_parts.append(
-                                        {
-                                            "type": "image",
-                                            "url": u,
-                                            "mediaType": im.get(
-                                                "mimeType", "image/jpeg"
-                                            ),
-                                            "width": im.get("width"),
-                                            "height": im.get("height"),
-                                        }
-                                    )
+                                    image_parts.append({
+                                        "type": "image",
+                                        "url": u,
+                                        "mediaType": im.get("mimeType", "image/jpeg"),
+                                        "width": im.get("width"),
+                                        "height": im.get("height"),
+                                    })
                             if urls:
                                 if on_images:
                                     on_images(assistant_text, image_urls)
@@ -902,30 +903,16 @@ def stream_message(
                 if assistant_text:
                     asst_parts.append({"type": "text", "text": assistant_text})
                 asst_parts.extend(image_parts)
-
-                client.messages.append(
-                    {
-                        "id": assistant_id
-                        or "".join(
-                            random.choices(
-                                string.ascii_letters + string.digits, k=16
-                            )
-                        ),
-                        "role": "assistant",
-                        "parts": asst_parts,
-                        "metadata": {
-                            "createdAt": time.strftime(
-                                "%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()
-                            ),
-                            "modelId": client.model,
-                        },
-                    }
-                )
-            elif (
-                (rate_limited or not start_fired)
-                and client.messages
-                and client.messages[-1].get("id") == user_msg_id
-            ):
+                client.messages.append({
+                    "id": assistant_id or "".join(random.choices(string.ascii_letters + string.digits, k=16)),
+                    "role": "assistant",
+                    "parts": asst_parts,
+                    "metadata": {
+                        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                        "modelId": client.model,
+                    },
+                })
+            elif (rate_limited or not start_fired) and client.messages and client.messages[-1].get("id") == user_msg_id:
                 client.messages.pop()
 
             if start_fired and not rate_limited and (assistant_text or image_urls):
@@ -937,7 +924,6 @@ def stream_message(
         if client_gone:
             return
 
-        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: sessizce auth tazele ve tekrar bağlan
         if (
             not finished
             and not rate_limited
@@ -991,12 +977,10 @@ def api_image_models():
 
 @app.route("/api/aspect_ratios")
 def api_aspect_ratios():
-    return jsonify(
-        {
-            "ratios": [{"id": r[0], "label": r[1]} for r in ASPECT_RATIOS],
-            "default": DEFAULT_ASPECT,
-        }
-    )
+    return jsonify({
+        "ratios": [{"id": r[0], "label": r[1]} for r in ASPECT_RATIOS],
+        "default": DEFAULT_ASPECT,
+    })
 
 
 @app.route("/api/toggle_feature", methods=["POST"])
@@ -1037,17 +1021,15 @@ def api_status():
     sess = get_sess()
     if not sess or not sess.get("app_unlocked"):
         return jsonify({"initialized": False})
-    return jsonify(
-        {
-            "initialized": True,
-            "account_created": bool(sess.get("client")),
-            "email": sess["client"].email if sess.get("client") else "",
-            "model": sess.get("model", DEFAULT_MODEL),
-            "message_count": len(sess.get("history", [])) // 2,
-            "total_credits": sess.get("total_credits", 0),
-            "total_cost": round(sess.get("total_cost", 0.0), 5),
-        }
-    )
+    return jsonify({
+        "initialized": True,
+        "account_created": bool(sess.get("client")),
+        "email": sess["client"].email if sess.get("client") else "",
+        "model": sess.get("model", DEFAULT_MODEL),
+        "message_count": len(sess.get("history", [])) // 2,
+        "total_credits": sess.get("total_credits", 0),
+        "total_cost": round(sess.get("total_cost", 0.0), 5),
+    })
 
 
 @app.route("/api/init", methods=["POST"])
@@ -1055,14 +1037,10 @@ def api_init():
     data = request.json or {}
     if data.get("password") != APP_PASSWORD:
         return jsonify({"success": False, "error": "Hatalı şifre."}), 401
-
     sid = get_sid() or str(uuid.uuid4())
     sess = new_sess(sid)
     sess["app_unlocked"] = True
-
-    resp = jsonify(
-        {"success": True, "account_created": False, "model": sess["model"]}
-    )
+    resp = jsonify({"success": True, "account_created": False, "model": sess["model"]})
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
     return resp
 
@@ -1084,11 +1062,9 @@ def api_send():
         return jsonify({"error": "Oturum bulunamadı."}), 401
 
     sess["aborted"] = False
-
     data = request.json or {}
     message = data.get("message", "").strip()
     attachments = data.get("attachments", [])
-
     if not message:
         return jsonify({"error": "Mesaj boş."}), 400
 
@@ -1110,20 +1086,14 @@ def api_send():
                     existing_urls.add(p_url)
                     fname = past_att.get("filename") or get_filename_from_url(p_url)
                     mtype = past_att.get("mediaType") or guess_mime("", filename=fname)
-                    attachments.append({
-                        "url": p_url, "filename": fname,
-                        "mediaType": mtype,
-                    })
+                    attachments.append({"url": p_url, "filename": fname, "mediaType": mtype})
             for gen_img in turn.get("generatedImages", []):
                 g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
                 if g_url and g_url not in existing_urls:
                     existing_urls.add(g_url)
                     fname = gen_img.get("filename") or get_filename_from_url(g_url) if isinstance(gen_img, dict) else get_filename_from_url(g_url)
                     mtype = gen_img.get("mediaType") or "image/jpeg" if isinstance(gen_img, dict) else "image/jpeg"
-                    attachments.append({
-                        "url": g_url, "filename": fname,
-                        "mediaType": mtype,
-                    })
+                    attachments.append({"url": g_url, "filename": fname, "mediaType": mtype})
 
     is_new_conv = not sess.get("active_local_conv_id")
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
@@ -1139,27 +1109,14 @@ def api_send():
             return
         history_committed = True
         target_history = sess.setdefault("history", [])
-        append_history(
-            target_history,
-            "user",
-            message,
-            attachments=attachments or None,
-        )
-        assistant_turn = append_history(
-            target_history,
-            "assistant",
-            "",
-        )
+        append_history(target_history, "user", message, attachments=attachments or None)
+        assistant_turn = append_history(target_history, "assistant", "")
         save_conv_to_history(sess)
 
     web_search = data.get("web_search", sess.get("web_search", False))
     image_mode = data.get("image_mode", sess.get("image_mode", False))
-    image_model_id = data.get(
-        "image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID)
-    )
-    aspect_ratio = data.get(
-        "aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT)
-    )
+    image_model_id = data.get("image_model", sess.get("image_model", DEFAULT_IMAGE_MODEL_ID))
+    aspect_ratio = data.get("aspect_ratio", sess.get("aspect_ratio", DEFAULT_ASPECT))
 
     def on_start():
         commit_history_on_start()
@@ -1180,20 +1137,11 @@ def api_send():
 
     def generate():
         nonlocal conv_id_sent
-
         try:
             for event in stream_message(
-                client,
-                api_message,
-                attachments,
-                web_search,
-                image_mode,
-                image_model_id,
-                aspect_ratio,
-                sess,
-                on_start=on_start,
-                on_delta=on_delta,
-                on_images=on_images,
+                client, api_message, attachments, web_search, image_mode,
+                image_model_id, aspect_ratio, sess,
+                on_start=on_start, on_delta=on_delta, on_images=on_images,
             ):
                 if is_new_conv and not conv_id_sent:
                     if '"type": "start"' in event or '"type": "chunk"' in event or history_committed:
@@ -1225,7 +1173,6 @@ def api_abort():
     sess = get_sess()
     if not sess:
         return jsonify({"error": "Oturum bulunamadı."}), 401
-
     sess["aborted"] = True
     return jsonify({"success": True})
 
@@ -1240,7 +1187,6 @@ def api_upload():
 
     file = request.files["file"]
     client = sess["client"]
-
     filename = file.filename
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
@@ -1267,15 +1213,10 @@ def api_upload():
             return jsonify({"error": "Yanıt ayrıştırılamadı"}), 500
         if data.get("success"):
             full_url = normalize_url(data["url"])
-            return jsonify(
-                {
-                    "url": full_url,
-                    "type": mime,
-                    "name": filename,
-                    "mediaType": mime,
-                    "filename": filename,
-                }
-            )
+            return jsonify({
+                "url": full_url, "type": mime, "name": filename,
+                "mediaType": mime, "filename": filename,
+            })
         return jsonify({"error": f"Upload başarısız: {data}"}), 500
     return jsonify({"error": f"Yükleme başarısız ({r.status_code})"}), 500
 
@@ -1296,36 +1237,25 @@ def api_files():
         if not full_url or full_url in seen:
             return
         seen.add(full_url)
-
-        mtype = media_type or guess_mime(
-            "", filename=filename or full_url.split("/")[-1]
-        )
+        mtype = media_type or guess_mime("", filename=filename or full_url.split("/")[-1])
         if source_type == "generated" and not (mtype and mtype.startswith("image/")):
             mtype = "image/jpeg"
-
         fname = filename or get_filename_from_url(full_url)
-
         files.append({"filename": fname, "mediaType": mtype, "url": full_url})
 
     def collect_from_turns(turns):
         for turn in turns:
             for a in turn.get("attachments", []):
-                add_file(
-                    a.get("url"),
-                    a.get("filename") or a.get("name"),
-                    a.get("mediaType") or a.get("type"),
-                    "attachment",
-                )
+                add_file(a.get("url"), a.get("filename") or a.get("name"),
+                         a.get("mediaType") or a.get("type"), "attachment")
             for img in turn.get("generatedImages", []):
                 if isinstance(img, dict):
-                    add_file(img.get("url"), img.get("filename") or img.get("name"), img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
+                    add_file(img.get("url"), img.get("filename") or img.get("name"),
+                             img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
                 elif isinstance(img, str):
                     add_file(img, None, "image/jpeg", "generated")
 
-    # 1. Mevcut aktif konuşma geçmişi
     collect_from_turns(sess.get("history", []))
-
-    # 2. Kayıtlı diğer tüm konuşmalar
     for conv in sess.get("conversations", []):
         collect_from_turns(conv.get("history", []))
 
@@ -1374,9 +1304,7 @@ def api_new_chat():
         sess["history"] = []
         sess["active_local_conv_id"] = None
 
-    return jsonify(
-        {"success": True, "new_conv_id": new_conv_id, "carried": bool(carry_history)}
-    )
+    return jsonify({"success": True, "new_conv_id": new_conv_id, "carried": bool(carry_history)})
 
 
 @app.route("/api/reset", methods=["POST"])
@@ -1405,12 +1333,8 @@ def api_reset():
     if old_sess:
         save_conv_to_history(old_sess)
     old_conversations = [
-        c
-        for c in (old_sess.get("conversations", []) if old_sess else [])
-        if any(
-            t.get("text") or t.get("attachments") or t.get("generatedImages")
-            for t in c.get("history", [])
-        )
+        c for c in (old_sess.get("conversations", []) if old_sess else [])
+        if any(t.get("text") or t.get("attachments") or t.get("generatedImages") for t in c.get("history", []))
     ]
 
     sess = new_sess(sid)
@@ -1425,10 +1349,7 @@ def api_reset():
     except Exception as e:
         if old_sess:
             _sessions[sid] = old_sess
-        return (
-            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}),
-            500,
-        )
+        return jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}), 500
 
     new_conv_id = None
     if carry_history:
@@ -1437,14 +1358,10 @@ def api_reset():
         new_conv_id = carry_local_id
         save_conv_to_history(sess)
 
-    resp_data = {
-        "success": True,
-        "email": client.email,
-        "model": model,
-        "carried": bool(carry_history),
-        "new_conv_id": new_conv_id,
-    }
-    resp = jsonify(resp_data)
+    resp = jsonify({
+        "success": True, "email": client.email, "model": model,
+        "carried": bool(carry_history), "new_conv_id": new_conv_id,
+    })
     resp.set_cookie("ua_sid", sid, max_age=86400 * 30, samesite="Lax")
     return resp
 
@@ -1456,7 +1373,6 @@ def api_model():
         return jsonify({"error": "Oturum yok"}), 401
     data = request.json or {}
     model = data.get("model", "")
-
     sess["model"] = model
 
     client = sess.get("client")
@@ -1475,7 +1391,6 @@ def api_model():
         client.chat_id = str(uuid.uuid4())
     sess["history"] = []
     sess["active_local_conv_id"] = None
-
     return jsonify({"success": True, "model": model})
 
 
@@ -1506,7 +1421,6 @@ def api_history():
         role = turn.get("role")
         text = turn.get("text") or ""
 
-        # attachments
         clean_atts = []
         for a in turn.get("attachments", []):
             u = normalize_url(a.get("url"))
@@ -1514,7 +1428,6 @@ def api_history():
             mtype = a.get("mediaType") or a.get("type") or guess_mime("", filename=fname)
             clean_atts.append({"filename": fname, "mediaType": mtype, "url": u})
 
-        # generatedImages
         clean_gen_imgs = []
         for g in turn.get("generatedImages", []):
             if isinstance(g, dict):
@@ -1527,21 +1440,12 @@ def api_history():
                 mtype = "image/jpeg"
             clean_gen_imgs.append({"filename": fname, "mediaType": mtype, "url": u})
 
-        images = [g["url"] for g in clean_gen_imgs] + [
-            a["url"] for a in clean_atts if a["mediaType"].startswith("image/")
-        ]
+        images = [g["url"] for g in clean_gen_imgs] + [a["url"] for a in clean_atts if a["mediaType"].startswith("image/")]
 
         content = turn.get("content")
         if content and not text:
             if isinstance(content, list):
-                text = next(
-                    (
-                        i.get("text", "")
-                        for i in content
-                        if i.get("type") == "text"
-                    ),
-                    "",
-                )
+                text = next((i.get("text", "") for i in content if i.get("type") == "text"), "")
                 for ci in content:
                     if ci.get("type") == "image_url":
                         iu = normalize_url(ci.get("image_url", {}).get("url"))
@@ -1550,23 +1454,17 @@ def api_history():
             else:
                 text = str(content)
 
-        simplified.append(
-            {
-                "role": role,
-                "text": text,
-                "images": images,
-                "at": turn.get("at", ""),
-                "attachments": clean_atts,
-                "generatedImages": clean_gen_imgs,
-            }
-        )
-    return jsonify(
-        {
-            "history": simplified,
-            "conv_id": sess.get("active_local_conv_id"),
-            "streaming": bool(sess.get("active_ws")),
-        }
-    )
+        simplified.append({
+            "role": role, "text": text, "images": images,
+            "at": turn.get("at", ""),
+            "attachments": clean_atts,
+            "generatedImages": clean_gen_imgs,
+        })
+    return jsonify({
+        "history": simplified,
+        "conv_id": sess.get("active_local_conv_id"),
+        "streaming": bool(sess.get("active_ws")),
+    })
 
 
 @app.route("/api/conversations")
@@ -1577,22 +1475,16 @@ def api_conversations():
     convs = sess.get("conversations", [])
     result = []
     for i, c in enumerate(convs):
-        valid_turns = [
-            t
-            for t in c.get("history", [])
-            if t.get("text") or t.get("attachments") or t.get("generatedImages")
-        ]
+        valid_turns = [t for t in c.get("history", []) if t.get("text") or t.get("attachments") or t.get("generatedImages")]
         if not valid_turns:
             continue
         count = len(valid_turns) // 2
-        result.append(
-            {
-                "idx": i,
-                "conv_id": c.get("conv_id") or str(uuid.uuid4()),
-                "title": c["title"],
-                "count": max(1, count),
-            }
-        )
+        result.append({
+            "idx": i,
+            "conv_id": c.get("conv_id") or str(uuid.uuid4()),
+            "title": c["title"],
+            "count": max(1, count),
+        })
     return jsonify({"conversations": result})
 
 
@@ -1601,11 +1493,9 @@ def api_conversation_load():
     sess = get_sess()
     if not sess or not sess.get("client"):
         return jsonify({"error": "Oturum yok"}), 401
-
     data = request.json or {}
     conv_id = data.get("conv_id")
     idx = data.get("idx")
-
     convs = sess.get("conversations", [])
 
     if not conv_id and idx is not None:
@@ -1630,7 +1520,6 @@ def api_conversation_delete():
     sess = get_sess()
     if not sess:
         return jsonify({"error": "Oturum yok"}), 401
-
     data = request.json or {}
     conv_id = data.get("conv_id")
     if not conv_id:
@@ -1660,27 +1549,21 @@ def api_conversation_rename():
     sess = get_sess()
     if not sess:
         return jsonify({"error": "Oturum yok"}), 401
-
     data = request.json or {}
     conv_id = data.get("conv_id")
     title = (data.get("title") or "").strip()
     if not conv_id or not title:
         return jsonify({"error": "Geçersiz istek"}), 400
-
     title = (title[:48] + "…") if len(title) > 48 else title
-
     for c in sess.get("conversations", []):
         if c.get("conv_id") == conv_id:
             c["title"] = title
             c["title_locked"] = True
             return jsonify({"success": True, "title": title})
-
     return jsonify({"error": "Konuşma bulunamadı"}), 404
 
 
 if __name__ == "__main__":
     print("Use AI Web Interface başlatılıyor...")
     print("http://localhost:5000 adresine gidin")
-    app.run(
-        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
-    )
+    app.run(debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False)
