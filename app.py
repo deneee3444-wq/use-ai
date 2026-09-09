@@ -59,6 +59,7 @@ MODELS = {
         "Fable 5": "gateway-fable-5",
         "Opus 5": "gateway-opus-5",
         "Opus 4.8": "gateway-opus-4-8",
+        "GPT-6 Astra": "gateway-gpt-6-astra",
         "GPT-5.6 Sol": "gateway-gpt-5-6",
         "GPT-5.5": "gateway-gpt-5-5",
         "Gemini 3.6 Flash": "gateway-gemini-3-6-flash",
@@ -256,23 +257,6 @@ class UseAIClient:
         self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
 
-    def get_auth_token(self):
-        """v1/auth/token endpoint'inden güncel JWT alır (set-auth-jwt header'ı dönmediğinde kesin kaynak)."""
-        print("[AUTH] /v1/auth/token adresinden token talep ediliyor...")
-        try:
-            r = self.session.get(f"{API_BASE}/v1/auth/token")
-            r.raise_for_status()
-            token = r.json().get("token")
-            if token:
-                self.jwt = token
-                print(f"[AUTH] Token başarıyla alındı: {self.jwt[:25]}... (uzunluk: {len(self.jwt)})")
-            else:
-                print("[AUTH] UYARI: /v1/auth/token yanıtında 'token' alanı boş!")
-            return self.jwt
-        except Exception as e:
-            print(f"[AUTH] HATA: /v1/auth/token isteği başarısız: {e}")
-            raise
-
     def get_session(self):
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
@@ -282,17 +266,9 @@ class UseAIClient:
         new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
             self.jwt = new_jwt
-            print(f"[AUTH] get-session başlığından set-auth-jwt alındı: {self.jwt[:25]}...")
-        else:
-            print("[AUTH] get-session yanıtında set-auth-jwt başlığı YOK, alternatif /v1/auth/token çağrılacak.")
         data = r.json()
         if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
-        if not self.jwt:
-            try:
-                self.get_auth_token()
-            except Exception as e:
-                print(f"[AUTH] Yedek token alma hatası: {e}")
 
     def set_model(self, model: str = DEFAULT_MODEL):
         r = self.session.post(
@@ -330,13 +306,8 @@ class UseAIClient:
 
     def refresh_auth(self):
         """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
-        print("[AUTH] Oturum ve kimlik bilgileri yenileniyor (refresh_auth)...")
         try:
             self.get_session()
-        except Exception:
-            pass
-        try:
-            self.get_auth_token()
         except Exception:
             pass
         try:
@@ -350,22 +321,14 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        print("[AUTH] Yeni oturum başlatılıyor (bootstrap)...")
         self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
-        if not self.jwt:
-            try:
-                print("[AUTH] bootstrap sırasında JWT eksik, /v1/auth/token çağrılıyor...")
-                self.get_auth_token()  # 5. Token garantisi (/v1/auth/token)
-            except Exception as e:
-                print(f"[AUTH] bootstrap token garantisi hatası: {e}")
-        self.set_model(model)  # 6. Model seçimi
-        self.app_attestation()  # 7. App attestation token
-        self.vote()  # 8. Initial vote / room hazirlik (self.chat_id set & voted)
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
-        print(f"[AUTH] Bootstrap tamamlandı. Email: {self.email}, UserID: {self.user_id}, JWT var mı: {bool(self.jwt)}")
 
 
 def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
@@ -697,16 +660,8 @@ def stream_message(
         except Exception:
             client.chat_id = str(uuid.uuid4())
 
-    if not client.jwt:
-        print("[WS] client.jwt eksik! WebSocket öncesinde /v1/auth/token çağrılıyor...")
-        try:
-            client.get_auth_token()
-        except Exception as e:
-            print(f"[WS] Token alma hatası: {e}")
-
     for retry_cycle in range(2):
         if retry_cycle > 0:
-            print(f"[WS] Yeniden deneme döngüsü #{retry_cycle}, auth tazeleniyor...")
             try:
                 client.refresh_auth()
             except Exception:
@@ -726,8 +681,6 @@ def stream_message(
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.set_ciphers(SSL_CIPHERS)
             ws_headers = _build_ws_headers(client)
-            token_preview = f"{client.jwt[:15]}..." if client.jwt else "BOŞ!"
-            print(f"[WS] WebSocket bağlantısı başlatılıyor (oda: {current_room[:8]}..., token: {token_preview})...")
             ws = websocket.create_connection(
                 _build_ws_url(client, current_room),
                 origin=ORIGIN,
@@ -735,30 +688,8 @@ def stream_message(
                 header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
             )
-            print("[WS] WebSocket bağlantısı başarıyla kuruldu (101 Switching Protocols).")
         except Exception as e:
             connect_err = e
-            if isinstance(e, websocket.WebSocketBadStatusException):
-                headers = {
-                    str(k).lower(): v
-                    for k, v in (getattr(e, "resp_headers", None) or {}).items()
-                }
-
-                print("[WS] HTTP status:", getattr(e, "status_code", None))
-
-                # Cookie gibi hassas başlıkları yazdırma.
-                for key in ("server", "content-type", "cf-ray", "cf-mitigated"):
-                    if key in headers:
-                        print(f"[WS] {key}: {headers[key]}")
-
-                body = getattr(e, "resp_body", None) or ""
-                if isinstance(body, bytes):
-                    body = body.decode("utf-8", errors="replace")
-
-                # Yalnızca özel debug logunda kullan.
-                # Paylaşmadan önce token, e-posta ve diğer hassas bilgileri temizle.
-                print("[WS] Response body:", body[:1500])
-            print(f"[WS] WebSocket bağlantı hatası: {connect_err}")
             ws = None
             if retry_cycle == 0:
                 continue
