@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""UseAI - Flask Web Interface
+"""UseAI - Flask Web Interface"""
 
-Gereksinimler:
-    pip install -U flask curl_cffi
-
-HTTP/HTTPS istekleri, dosya yüklemeleri ve WebSocket bağlantıları
-curl_cffi üzerinden gerçekleştirilir.
-"""
-
-import copy
 import json
 import mimetypes
 import os
@@ -17,17 +9,48 @@ import string
 import time
 import urllib.parse
 import uuid
+import ssl
 from datetime import datetime
 
-from curl_cffi import CurlError, CurlMime, CurlOpt, CurlWsFlag
-from curl_cffi import requests
-from curl_cffi.const import CurlECode, CurlHttpVersion
+import requests
+import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
-# debug=True olsa bile hatalar HTML değil JSON dönsün.
+# debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
+
+# ===================== RENDER TOR PROXY CONFIG =====================
+RENDER_PROXY_URL = os.environ.get(
+    "RENDER_PROXY_URL", "https://tor-proxy-oko5.onrender.com"
+).rstrip("/")
+RENDER_WS_PROXY_URL = (
+    RENDER_PROXY_URL.replace("https://", "wss://").replace("http://", "ws://")
+)
+RENDER_API_TOKEN = os.environ.get("RENDER_API_TOKEN", "mySecretToken123")
+
+
+class RenderTorAdapter(requests.adapters.HTTPAdapter):
+    """Bütün giden HTTP/HTTPS isteklerini Render Tor proxy servisi üzerinden yönlendirir."""
+
+    def __init__(self, proxy_base: str, token: str, *args, **kwargs):
+        self.proxy_base = proxy_base.rstrip("/")
+        self.token = token
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        orig_url = request.url
+        if not orig_url.startswith(self.proxy_base):
+            quoted_url = urllib.parse.quote(orig_url, safe="")
+            request.url = f"{self.proxy_base}/?url={quoted_url}&token={self.token}"
+        resp = super().send(request, **kwargs)
+        # requests'in cookiejar'ının Domain=.use.ai çerezlerini kabul edebilmesi
+        # ve doğru domain ile ilişkilendirebilmesi için URL orijinal haline çekilir
+        request.url = orig_url
+        resp.url = orig_url
+        return resp
+
 
 # ===================== CONSTANTS =====================
 API_BASE = "https://api.use.ai"
@@ -49,11 +72,9 @@ SSL_CIPHERS = (
 )
 
 # Akış davranışı
-IDLE_TIMEOUT = 180.0
-PING_INTERVAL = 15.0
-WS_CONNECT_TIMEOUT = 25
-WS_RECV_TIMEOUT = 0.5
-WS_POLL_INTERVAL = 0.01
+IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
+PING_INTERVAL = 15.0  # SSE keepalive aralığı
+WS_CONNECT_TIMEOUT = 25  # handshake timeout
 
 # ---------- MODEL KATALOĞU (chat) ----------
 MODELS = {
@@ -117,21 +138,13 @@ DEFAULT_MODEL = "gateway-opus-5"
 IMAGE_MODELS = [
     {"id": "nano-banana", "label": "Nano Banana", "provider": "openrouter"},
     {"id": "nano-banana-2", "label": "Nano Banana 2", "provider": "openrouter"},
-    {
-        "id": "nano-banana-2-lite",
-        "label": "Nano Banana 2 Lite",
-        "provider": "openrouter",
-    },
+    {"id": "nano-banana-2-lite", "label": "Nano Banana 2 Lite", "provider": "openrouter"},
     {"id": "gpt-image-2", "label": "GPT Image 2", "provider": "openrouter"},
     {"id": "nano-banana-pro", "label": "Nano Banana Pro", "provider": "openrouter"},
     {"id": "seedream-4.5", "label": "Seedream 4.5", "provider": "openrouter"},
     {"id": "flux-2-pro", "label": "FLUX.2 Pro", "provider": "openrouter"},
     {"id": "mai-image-2.5", "label": "MAI-Image-2.5", "provider": "openrouter"},
-    {
-        "id": "krea-2-medium-turbo",
-        "label": "Krea 2 Medium Turbo",
-        "provider": "openrouter",
-    },
+    {"id": "krea-2-medium-turbo", "label": "Krea 2 Medium Turbo", "provider": "openrouter"},
     {"id": "krea-2-medium", "label": "Krea 2 Medium", "provider": "openrouter"},
     {"id": "flux-2-flex", "label": "FLUX.2 Flex", "provider": "openrouter"},
     {"id": "flux-2-max", "label": "FLUX.2 Max", "provider": "openrouter"},
@@ -193,8 +206,10 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    """Tüm dış HTTP/HTTPS istekleri için curl_cffi oturumu."""
     s = requests.Session()
+    adapter = RenderTorAdapter(RENDER_PROXY_URL, RENDER_API_TOKEN)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
     s.headers.update(
         {
             "accept": "*/*",
@@ -202,10 +217,7 @@ def new_session() -> requests.Session:
             "origin": ORIGIN,
             "referer": REFERER,
             "user-agent": UA,
-            "sec-ch-ua": (
-                '"Not;A=Brand";v="8", "Chromium";v="150", '
-                '"Google Chrome";v="150"'
-            ),
+            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
@@ -224,140 +236,8 @@ def guess_mime(path: str, filename: str = None) -> str:
     return mt or "application/octet-stream"
 
 
-# ===================== CURL_CFFI WEBSOCKET =====================
-class CurlWebSocketTimeout(TimeoutError):
-    """WebSocket okumasının belirlenen süre içinde tamamlanmaması."""
-
-
-class CurlWebSocket:
-    """curl_cffi WebSocket için mevcut akışa uyumlu senkron arayüz.
-
-    Ayrı curl_cffi oturumu, uzun ömürlü WSS bağlantısını HTTP isteklerinden
-    ayırır. Çerezler domain/path bilgileri korunarak kopyalanır.
-
-    Parçalı mesaj tamponu recv() çağrıları arasında korunur; kısa okuma
-    zaman aşımı, henüz tamamlanmamış WebSocket mesajını kaybettirmez.
-    """
-
-    def __init__(self, session, ws, timeout=WS_RECV_TIMEOUT):
-        self._session = session
-        self._ws = ws
-        self._timeout = timeout
-        self._fragments = []
-        self._closed = False
-
-    @classmethod
-    def connect(cls, client, url, headers, timeout=WS_CONNECT_TIMEOUT):
-        ws_session = requests.Session(
-            verify=True,
-            curl_options={
-                CurlOpt.SSL_CIPHER_LIST: SSL_CIPHERS,
-            },
-        )
-
-        try:
-            if client and client.session:
-                for cookie in client.session.cookies.jar:
-                    ws_session.cookies.jar.set_cookie(copy.copy(cookie))
-
-            ws = ws_session.ws_connect(
-                url,
-                headers=headers,
-                timeout=timeout,
-                http_version=CurlHttpVersion.V1_1,
-            )
-            return cls(ws_session, ws)
-        except BaseException:
-            ws_session.close()
-            raise
-
-    def settimeout(self, timeout):
-        self._timeout = None if timeout is None else float(timeout)
-
-    def send(self, payload):
-        if self._closed:
-            raise ConnectionError("WebSocket bağlantısı kapalı.")
-
-        if isinstance(payload, str):
-            return self._ws.send(
-                payload.encode("utf-8"),
-                flags=CurlWsFlag.TEXT,
-            )
-
-        return self._ws.send(payload, flags=CurlWsFlag.BINARY)
-
-    def recv(self):
-        if self._closed:
-            return b""
-
-        deadline = (
-            None
-            if self._timeout is None
-            else time.monotonic() + self._timeout
-        )
-
-        while not self._closed:
-            if deadline is not None and time.monotonic() >= deadline:
-                raise CurlWebSocketTimeout(
-                    "WebSocket okuma zaman aşımı."
-                )
-
-            try:
-                fragment, frame = self._ws.recv_fragment()
-            except CurlError as exc:
-                if int(exc.code) != int(CurlECode.AGAIN):
-                    raise
-
-                delay = WS_POLL_INTERVAL
-                if deadline is not None:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise CurlWebSocketTimeout(
-                            "WebSocket okuma zaman aşımı."
-                        ) from exc
-                    delay = min(delay, remaining)
-
-                time.sleep(delay)
-                continue
-
-            flags = int(frame.flags)
-
-            if flags & int(CurlWsFlag.CLOSE):
-                self.close()
-                return b""
-
-            # libcurl varsayılan olarak PING paketlerine PONG gönderir.
-            # Kontrol paketleri uygulama JSON mesajlarına dahil edilmez.
-            if flags & int(CurlWsFlag.PING | CurlWsFlag.PONG):
-                continue
-
-            self._fragments.append(fragment)
-
-            # bytesleft aynı frame'in kalanını, CONT ise mesajın devamını
-            # belirtir. Yalnızca mesaj tamamlandığında sonucu döndür.
-            if frame.bytesleft == 0 and not (
-                flags & int(CurlWsFlag.CONT)
-            ):
-                message = b"".join(self._fragments)
-                self._fragments.clear()
-                return message
-
-        return b""
-
-    def close(self):
-        if self._closed:
-            return
-
-        self._closed = True
-        self._fragments.clear()
-
-        try:
-            self._ws.close()
-        finally:
-            self._session.close()
-
-
 class UseAIClient:
+
     def __init__(self):
         self.session: requests.Session | None = None
         self.email: str = ""
@@ -373,16 +253,12 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve guest çerezlerini başlatır."""
+        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
         self.session = new_session()
         self.mixpanel_id = str(uuid.uuid4())
         self.guest_id = str(uuid.uuid4())
-        self.session.cookies.set(
-            "guest_user_id", self.guest_id, domain=".use.ai"
-        )
-        self.session.cookies.set(
-            "guest_mixpanel_id", self.mixpanel_id, domain=".use.ai"
-        )
+        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
+        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
     def email_login(self):
         if self.session is None:
@@ -425,7 +301,7 @@ class UseAIClient:
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
-        if "user" in data and "id" in data["user"]:
+        if data and isinstance(data, dict) and data.get("user") and isinstance(data["user"], dict) and "id" in data["user"]:
             self.user_id = data["user"]["id"]
 
     def set_model(self, model: str = DEFAULT_MODEL):
@@ -463,7 +339,7 @@ class UseAIClient:
         return self.chat_id
 
     def refresh_auth(self):
-        """Bayatlamış jwt/app_token değerlerini tazeler."""
+        """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
         try:
             self.get_session()
         except Exception:
@@ -479,21 +355,18 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()
-        self.email_login()
-        self.sign_in()
-        self.get_session()
-        self.set_model(model)
-        self.app_attestation()
-        self.vote()
+        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.email_login()  # 2. Email login
+        self.sign_in()  # 3. Credentials sign in
+        self.get_session()  # 4. Get session & JWT
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
-def get_filename_from_url(
-    url: str | None,
-    default_name: str | None = None,
-) -> str:
-    """URL'in sonundaki gerçek dosya ismini decoded olarak döner."""
+def get_filename_from_url(url: str | None, default_name: str | None = None) -> str:
+    """URL'in sonundaki gerçek dosya ismini (decoded) döner."""
     if default_name and str(default_name).strip():
         name = str(default_name).strip()
         if "%2F" in name or "%2f" in name:
@@ -509,7 +382,7 @@ def get_filename_from_url(
 
 
 def normalize_url(url: str | None) -> str:
-    """Göreli URL'leri tam URL'ye çevirir; data URL'lerini korur."""
+    """Her zaman tam (https://...) URL döndürür."""
     if not url:
         return ""
     u = str(url).strip()
@@ -519,7 +392,7 @@ def normalize_url(url: str | None) -> str:
         return f"https:{u}"
     if u.startswith("/"):
         return f"{FILES_BASE}{u}"
-    return f"{u}https://{u}"
+    return f"https://{u}"
 
 
 def append_history(
@@ -537,19 +410,8 @@ def append_history(
     if attachments:
         entry["attachments"] = [
             {
-                "filename": (
-                    a.get("filename")
-                    or a.get("name")
-                    or get_filename_from_url(normalize_url(a.get("url")))
-                ),
-                "mediaType": (
-                    a.get("mediaType")
-                    or a.get("type")
-                    or guess_mime(
-                        "",
-                        filename=a.get("filename") or a.get("name", ""),
-                    )
-                ),
+                "filename": a.get("filename") or a.get("name") or get_filename_from_url(normalize_url(a.get("url"))),
+                "mediaType": a.get("mediaType") or a.get("type") or guess_mime("", filename=a.get("filename") or a.get("name", "")),
                 "url": normalize_url(a.get("url")),
             }
             for a in attachments
@@ -561,16 +423,12 @@ def append_history(
 
 
 def _clean_image_list(items):
-    """Görsel listesini str veya dict değerlerinden temiz dict listesine çevirir."""
+    """Görsel listesini (str veya dict) temiz dict listesine çevirir."""
     result = []
     for item in items:
         if isinstance(item, dict):
             url = normalize_url(item.get("url"))
-            fname = (
-                item.get("filename")
-                or item.get("name")
-                or get_filename_from_url(url)
-            )
+            fname = item.get("filename") or item.get("name") or get_filename_from_url(url)
             mtype = item.get("mediaType") or item.get("type") or "image/jpeg"
         else:
             url = normalize_url(item)
@@ -626,7 +484,7 @@ def _derive_title(history):
 
 
 def set_turn_content(turn, text, image_urls=None):
-    """Asistan turunu yerinde günceller."""
+    """Asistan turunu YERİNDE günceller."""
     turn["text"] = text
     if image_urls:
         turn["generatedImages"] = _clean_image_list(image_urls)
@@ -708,15 +566,20 @@ def _build_ws_url(client, agent_room):
 
 
 def _build_ws_headers(client):
-    # Cookie başlığı curl_cffi tarafından cookie jar üzerinden oluşturulur.
-    # Upgrade/Connection/Sec-WebSocket-* başlıklarını libcurl yönetir.
-    return {
-        "User-Agent": UA,
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Origin": ORIGIN,
-    }
+    cookie_str = ""
+    if client and client.session:
+        cookie_str = "; ".join(
+            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+        )
+    headers = [
+        f"User-Agent: {UA}",
+        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control: no-cache",
+        "Pragma: no-cache",
+    ]
+    if cookie_str:
+        headers.append(f"Cookie: {cookie_str}")
+    return headers
 
 
 def stream_message(
@@ -732,6 +595,7 @@ def stream_message(
     on_delta=None,
     on_images=None,
 ):
+    agent_room = str(uuid.uuid4())
     user_msg_id = "".join(
         random.choices(string.ascii_letters + string.digits, k=16)
     )
@@ -742,9 +606,8 @@ def stream_message(
             parts.append(
                 {
                     "type": "file",
-                    "mediaType": (
-                        a.get("mediaType") or a.get("type", "image/jpeg")
-                    ),
+                    "mediaType": a.get("mediaType")
+                    or a.get("type", "image/jpeg"),
                     "filename": a.get("filename") or a.get("name", "file"),
                     "url": normalize_url(a.get("url")),
                 }
@@ -789,12 +652,6 @@ def stream_message(
         else ("websearch" if web_search else "chat_page")
     )
 
-    if not client.chat_id:
-        try:
-            client.vote(str(uuid.uuid4()))
-        except Exception:
-            client.chat_id = str(uuid.uuid4())
-
     payload = {
         "chatId": client.chat_id,
         "userId": client.user_id,
@@ -831,6 +688,12 @@ def stream_message(
         payload["imageGenerationRatio"] = aspect_ratio
         payload["imageGenerationStyle"] = IMAGE_STYLE
 
+    if not client.chat_id:
+        try:
+            client.vote(str(uuid.uuid4()))
+        except Exception:
+            client.chat_id = str(uuid.uuid4())
+
     for retry_cycle in range(2):
         if retry_cycle > 0:
             try:
@@ -848,11 +711,27 @@ def stream_message(
         ws = None
         connect_err = None
 
+        target_ws_url = _build_ws_url(client, current_room)
+        quoted_ws_url = urllib.parse.quote(target_ws_url, safe="")
+        cookie_str = ""
+        if client and client.session:
+            cookie_str = "; ".join(
+                [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+            )
+        quoted_cookies = urllib.parse.quote(cookie_str, safe="")
+        proxied_ws_url = (
+            f"{RENDER_WS_PROXY_URL}/ws?url={quoted_ws_url}&token={RENDER_API_TOKEN}&cookies={quoted_cookies}"
+        )
+
         try:
-            ws = CurlWebSocket.connect(
-                client=client,
-                url=_build_ws_url(client, current_room),
-                headers=_build_ws_headers(client),
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.set_ciphers(SSL_CIPHERS)
+            ws_headers = _build_ws_headers(client)
+            ws = websocket.create_connection(
+                proxied_ws_url,
+                origin=ORIGIN,
+                sslopt={"context": ssl_ctx},
+                header=ws_headers,
                 timeout=WS_CONNECT_TIMEOUT,
             )
         except Exception as e:
@@ -861,14 +740,12 @@ def stream_message(
             if retry_cycle == 0:
                 continue
             else:
-                yield (
-                    f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
-                )
+                yield f"data: {json.dumps({'type': 'error', 'code': f'WS_CONNECT_FAILED: {connect_err}'})}\n\n"
                 return
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
-        ws.settimeout(WS_RECV_TIMEOUT)
+        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -896,13 +773,12 @@ def stream_message(
 
                     try:
                         raw = ws.recv()
-                    except CurlWebSocketTimeout:
+                    except websocket.WebSocketTimeoutException:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
-                        if (
-                            now - last_ping > PING_INTERVAL
-                            and not sess.get("aborted")
+                        if now - last_ping > PING_INTERVAL and not sess.get(
+                            "aborted"
                         ):
                             last_ping = now
                             yield ": keepalive\n\n"
@@ -923,9 +799,7 @@ def stream_message(
                     if msg.get("type") == "rate-limit-error":
                         rate_limited = True
                         finished = True
-                        yield (
-                            f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
-                        )
+                        yield f"data: {json.dumps({'type': 'error', 'code': 'RATE_LIMITED'})}\n\n"
                         break
 
                     chunk = msg.get("chunk")
@@ -937,9 +811,7 @@ def stream_message(
                                 start_fired = True
                                 if on_start:
                                     on_start()
-                                yield (
-                                    f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                                )
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
 
                         elif ct == "text-delta":
                             delta = chunk.get("delta", "")
@@ -948,16 +820,12 @@ def stream_message(
                                     start_fired = True
                                     if on_start:
                                         on_start()
-                                    yield (
-                                        f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                                    )
+                                    yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                                 assistant_text += delta
                                 if on_delta:
                                     on_delta(assistant_text)
                                 if not sess.get("aborted"):
-                                    yield (
-                                        f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
-                                    )
+                                    yield f"data: {json.dumps({'type': 'chunk', 'content': delta})}\n\n"
 
                         elif (
                             ct.startswith("tool-image-")
@@ -967,15 +835,11 @@ def stream_message(
                                 start_fired = True
                                 if on_start:
                                     on_start()
-                                yield (
-                                    f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                                )
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                             inp = chunk.get("input") or {}
                             shortCopy = inp.get("shortCopy")
                             if shortCopy and not sess.get("aborted"):
-                                yield (
-                                    f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
-                                )
+                                yield f"data: {json.dumps({'type': 'image_status', 'message': shortCopy})}\n\n"
 
                         elif (
                             ct.startswith("tool-image-")
@@ -985,9 +849,7 @@ def stream_message(
                                 start_fired = True
                                 if on_start:
                                     on_start()
-                                yield (
-                                    f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
-                                )
+                                yield f"data: {json.dumps({'type': 'start', 'message_id': assistant_id})}\n\n"
                             output = chunk.get("output") or {}
                             imgs = output.get("images") or []
                             urls = []
@@ -1011,18 +873,14 @@ def stream_message(
                                 if on_images:
                                     on_images(assistant_text, image_urls)
                                 if not sess.get("aborted"):
-                                    yield (
-                                        f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
-                                    )
+                                    yield f"data: {json.dumps({'type': 'image_result', 'urls': urls})}\n\n"
 
                         elif ct == "finish":
                             pass
 
                     if msg.get("type") == "stream-complete":
                         finished = True
-                        yield (
-                            f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
-                        )
+                        yield f"data: {json.dumps({'type': 'done', 'full_response': assistant_text})}\n\n"
                         break
 
             except GeneratorExit:
@@ -1079,7 +937,7 @@ def stream_message(
         if client_gone:
             return
 
-        # İlk denemede hiç veri/start gelmeden kapandıysa auth tazele ve tekrar bağlan.
+        # Hiç veri/start gelmeden boş kapandıysa ve 1. denemedeysek: sessizce auth tazele ve tekrar bağlan
         if (
             not finished
             and not rate_limited
@@ -1091,14 +949,10 @@ def stream_message(
 
         if not finished and not rate_limited:
             if assistant_text or image_urls:
-                yield (
-                    f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
-                )
+                yield f"data: {json.dumps({'type': 'stream_interrupted', 'full_response': assistant_text})}\n\n"
             else:
                 code = fatal_error or "STREAM_CLOSED_EMPTY"
-                yield (
-                    f"data: {json.dumps({'type': 'error', 'code': code})}\n\n"
-                )
+                yield f"data: {json.dumps({'type': 'error', 'code': code})}\n\n"
         break
 
 
@@ -1254,46 +1108,22 @@ def api_send():
                 p_url = past_att.get("url")
                 if p_url and p_url not in existing_urls:
                     existing_urls.add(p_url)
-                    fname = (
-                        past_att.get("filename") or get_filename_from_url(p_url)
-                    )
-                    mtype = (
-                        past_att.get("mediaType")
-                        or guess_mime("", filename=fname)
-                    )
-                    attachments.append(
-                        {
-                            "url": p_url,
-                            "filename": fname,
-                            "mediaType": mtype,
-                        }
-                    )
-
+                    fname = past_att.get("filename") or get_filename_from_url(p_url)
+                    mtype = past_att.get("mediaType") or guess_mime("", filename=fname)
+                    attachments.append({
+                        "url": p_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
             for gen_img in turn.get("generatedImages", []):
-                g_url = (
-                    gen_img.get("url")
-                    if isinstance(gen_img, dict)
-                    else gen_img
-                )
+                g_url = gen_img.get("url") if isinstance(gen_img, dict) else gen_img
                 if g_url and g_url not in existing_urls:
                     existing_urls.add(g_url)
-                    if isinstance(gen_img, dict):
-                        fname = (
-                            gen_img.get("filename")
-                            or get_filename_from_url(g_url)
-                        )
-                        mtype = gen_img.get("mediaType") or "image/jpeg"
-                    else:
-                        fname = get_filename_from_url(g_url)
-                        mtype = "image/jpeg"
-
-                    attachments.append(
-                        {
-                            "url": g_url,
-                            "filename": fname,
-                            "mediaType": mtype,
-                        }
-                    )
+                    fname = gen_img.get("filename") or get_filename_from_url(g_url) if isinstance(gen_img, dict) else get_filename_from_url(g_url)
+                    mtype = gen_img.get("mediaType") or "image/jpeg" if isinstance(gen_img, dict) else "image/jpeg"
+                    attachments.append({
+                        "url": g_url, "filename": fname,
+                        "mediaType": mtype,
+                    })
 
     is_new_conv = not sess.get("active_local_conv_id")
     new_local_conv_id = make_local_conv_id() if is_new_conv else None
@@ -1366,15 +1196,9 @@ def api_send():
                 on_images=on_images,
             ):
                 if is_new_conv and not conv_id_sent:
-                    if (
-                        '"type": "start"' in event
-                        or '"type": "chunk"' in event
-                        or history_committed
-                    ):
+                    if '"type": "start"' in event or '"type": "chunk"' in event or history_committed:
                         conv_id_sent = True
-                        yield (
-                            f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
-                        )
+                        yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': new_local_conv_id})}\n\n"
                 yield event
         except GeneratorExit:
             pass
@@ -1421,34 +1245,20 @@ def api_upload():
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
 
-    # curl_cffi, requests'in files= arayüzü yerine CurlMime kullanır.
-    multipart = CurlMime()
+    files = {
+        "name": (None, filename),
+        "type": (None, mime),
+        "file": (filename, file_bytes, mime),
+    }
     try:
-        multipart.addpart(
-            name="name",
-            data=(filename or "").encode("utf-8"),
-        )
-        multipart.addpart(
-            name="type",
-            data=mime.encode("utf-8"),
-        )
-        multipart.addpart(
-            name="file",
-            filename=filename or "file",
-            content_type=mime,
-            data=file_bytes,
-        )
-
         r = client.session.post(
             f"{FILES_BASE}/upload",
-            multipart=multipart,
+            files=files,
             headers={"authorization": f"Bearer {client.jwt}"},
             timeout=60,
         )
     except Exception as e:
         return jsonify({"error": f"Yükleme hatası: {str(e)}"}), 500
-    finally:
-        multipart.close()
 
     if r.status_code in (200, 201):
         try:
@@ -1479,12 +1289,7 @@ def api_files():
     seen = set()
     files = []
 
-    def add_file(
-        url,
-        filename=None,
-        media_type=None,
-        source_type="attachment",
-    ):
+    def add_file(url, filename=None, media_type=None, source_type="attachment"):
         if not url:
             return
         full_url = normalize_url(url)
@@ -1495,9 +1300,7 @@ def api_files():
         mtype = media_type or guess_mime(
             "", filename=filename or full_url.split("/")[-1]
         )
-        if source_type == "generated" and not (
-            mtype and mtype.startswith("image/")
-        ):
+        if source_type == "generated" and not (mtype and mtype.startswith("image/")):
             mtype = "image/jpeg"
 
         fname = filename or get_filename_from_url(full_url)
@@ -1515,19 +1318,14 @@ def api_files():
                 )
             for img in turn.get("generatedImages", []):
                 if isinstance(img, dict):
-                    add_file(
-                        img.get("url"),
-                        img.get("filename") or img.get("name"),
-                        img.get("mediaType") or img.get("type") or "image/jpeg",
-                        "generated",
-                    )
+                    add_file(img.get("url"), img.get("filename") or img.get("name"), img.get("mediaType") or img.get("type") or "image/jpeg", "generated")
                 elif isinstance(img, str):
                     add_file(img, None, "image/jpeg", "generated")
 
-    # Mevcut aktif konuşma geçmişi.
+    # 1. Mevcut aktif konuşma geçmişi
     collect_from_turns(sess.get("history", []))
 
-    # Kayıtlı diğer tüm konuşmalar.
+    # 2. Kayıtlı diğer tüm konuşmalar
     for conv in sess.get("conversations", []):
         collect_from_turns(conv.get("history", []))
 
@@ -1577,11 +1375,7 @@ def api_new_chat():
         sess["active_local_conv_id"] = None
 
     return jsonify(
-        {
-            "success": True,
-            "new_conv_id": new_conv_id,
-            "carried": bool(carry_history),
-        }
+        {"success": True, "new_conv_id": new_conv_id, "carried": bool(carry_history)}
     )
 
 
@@ -1612,9 +1406,7 @@ def api_reset():
         save_conv_to_history(old_sess)
     old_conversations = [
         c
-        for c in (
-            old_sess.get("conversations", []) if old_sess else []
-        )
+        for c in (old_sess.get("conversations", []) if old_sess else [])
         if any(
             t.get("text") or t.get("attachments") or t.get("generatedImages")
             for t in c.get("history", [])
@@ -1634,12 +1426,7 @@ def api_reset():
         if old_sess:
             _sessions[sid] = old_sess
         return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": f"Hesap oluşturulamadı: {str(e)}",
-                }
-            ),
+            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}),
             500,
         )
 
@@ -1719,42 +1506,26 @@ def api_history():
         role = turn.get("role")
         text = turn.get("text") or ""
 
+        # attachments
         clean_atts = []
         for a in turn.get("attachments", []):
             u = normalize_url(a.get("url"))
-            fname = (
-                a.get("filename")
-                or a.get("name")
-                or get_filename_from_url(u)
-            )
-            mtype = (
-                a.get("mediaType")
-                or a.get("type")
-                or guess_mime("", filename=fname)
-            )
-            clean_atts.append(
-                {"filename": fname, "mediaType": mtype, "url": u}
-            )
+            fname = a.get("filename") or a.get("name") or get_filename_from_url(u)
+            mtype = a.get("mediaType") or a.get("type") or guess_mime("", filename=fname)
+            clean_atts.append({"filename": fname, "mediaType": mtype, "url": u})
 
+        # generatedImages
         clean_gen_imgs = []
         for g in turn.get("generatedImages", []):
             if isinstance(g, dict):
                 u = normalize_url(g.get("url"))
-                fname = (
-                    g.get("filename")
-                    or g.get("name")
-                    or get_filename_from_url(u)
-                )
-                mtype = (
-                    g.get("mediaType") or g.get("type") or "image/jpeg"
-                )
+                fname = g.get("filename") or g.get("name") or get_filename_from_url(u)
+                mtype = g.get("mediaType") or g.get("type") or "image/jpeg"
             else:
                 u = normalize_url(g)
                 fname = get_filename_from_url(u)
                 mtype = "image/jpeg"
-            clean_gen_imgs.append(
-                {"filename": fname, "mediaType": mtype, "url": u}
-            )
+            clean_gen_imgs.append({"filename": fname, "mediaType": mtype, "url": u})
 
         images = [g["url"] for g in clean_gen_imgs] + [
             a["url"] for a in clean_atts if a["mediaType"].startswith("image/")
@@ -1773,9 +1544,7 @@ def api_history():
                 )
                 for ci in content:
                     if ci.get("type") == "image_url":
-                        iu = normalize_url(
-                            ci.get("image_url", {}).get("url")
-                        )
+                        iu = normalize_url(ci.get("image_url", {}).get("url"))
                         if iu and iu not in images:
                             images.append(iu)
             else:
@@ -1852,13 +1621,7 @@ def api_conversation_load():
 
     ok, cid, msg_count = _switch_to_conv(sess, conv_id)
     if ok:
-        return jsonify(
-            {
-                "success": True,
-                "conv_id": cid,
-                "message_count": msg_count,
-            }
-        )
+        return jsonify({"success": True, "conv_id": cid, "message_count": msg_count})
     return jsonify({"error": "Konuşma bulunamadı"}), 404
 
 
@@ -1916,12 +1679,10 @@ def api_conversation_rename():
 
 
 if __name__ == "__main__":
-    print("Use AI Web Interface başlatılıyor...")
-    print("[localhost](http://localhost:5000) adresine gidin")
+    port = int(os.environ.get("PORT", 5001))
+    print("Use AI Web Interface (Render Tor Proxy Modu) başlatılıyor...")
+    print(f"Bağlanılan Render Tor Proxy: {RENDER_PROXY_URL}")
+    print(f"http://localhost:{port} adresine gidin")
     app.run(
-        debug=True,
-        host="0.0.0.0",
-        port=5000,
-        threaded=True,
-        use_reloader=False,
+        debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=False
     )
