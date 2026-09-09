@@ -264,6 +264,11 @@ class UseAIClient:
         )
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
+        print(new_jwt)
+        try:
+            print(r.headers)
+        except Exception as e:
+            print(e)
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
