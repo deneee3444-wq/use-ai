@@ -28,7 +28,7 @@ ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
 
@@ -167,17 +167,40 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    s = requests.Session(impersonate="chrome131")
+    proxy = (
+        os.environ.get("USEAI_PROXY")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+    )
+    s = requests.Session(impersonate="chrome131", proxy=proxy)
     s.headers.update(
         {
             "user-agent": UA,
-            "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+            "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
         }
     )
     return s
+
+
+def _check_resp(step_name: str, r: requests.Response) -> requests.Response:
+    if r.status_code >= 400:
+        preview = (r.text or "")[:400].strip().replace("\r", " ").replace("\n", " ")
+        is_cf = (
+            "cf-ray" in r.headers
+            or "cloudflare" in (r.headers.get("server", "").lower())
+            or "<title>Just a moment...</title>" in preview
+            or "challenge-platform" in preview
+        )
+        cf_hint = ""
+        if is_cf:
+            cf_hint = " [Cloudflare WAF / Datacenter IP Koruması]"
+        msg = f"[{step_name}] HTTP {r.status_code}{cf_hint} ({r.url}): {preview}"
+        print(f"[USEAI ERROR] {msg}", flush=True)
+        raise RuntimeError(msg)
+    return r
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -218,7 +241,7 @@ class UseAIClient:
                 "upgrade-insecure-requests": "1",
             },
         )
-        r.raise_for_status()
+        _check_resp("1. GET /tr", r)
 
         # Çerezleri otomatik yakala, yoksa yeni UUID üret
         self.mixpanel_id = self.session.cookies.get(
@@ -264,7 +287,7 @@ class UseAIClient:
             headers=headers,
             json=payload,
         )
-        r.raise_for_status()
+        _check_resp("2. POST email-login", r)
 
     def sign_in(self):
         payload = {
@@ -290,7 +313,7 @@ class UseAIClient:
             headers=headers,
             json=payload,
         )
-        r.raise_for_status()
+        _check_resp("3. POST sign-in", r)
         data = r.json()
         self.user_id = data.get("userId", "")
         self.auth_token = r.headers.get("set-auth-token", "")
@@ -302,7 +325,7 @@ class UseAIClient:
             params={"disableCookieCache": "true"},
             headers=headers,
         )
-        r.raise_for_status()
+        _check_resp("4. GET get-session", r)
         new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
             self.jwt = new_jwt
@@ -365,7 +388,7 @@ class UseAIClient:
             headers=headers,
             json={},
         )
-        r.raise_for_status()
+        _check_resp("5. POST app-attestation", r)
         self.app_token = r.json().get("token", "")
 
     def vote(self, chat_id: str | None = None):
@@ -382,7 +405,7 @@ class UseAIClient:
                 "x-guest-user-id": f"guest:{self.guest_id}",
             },
         )
-        r.raise_for_status()
+        _check_resp("6. GET vote", r)
         return self.chat_id
 
     def refresh_auth(self):
@@ -1451,8 +1474,12 @@ def api_reset():
     except Exception as e:
         if old_sess:
             _sessions[sid] = old_sess
+        err_msg = str(e)
+        if "Cloudflare" in err_msg or "403" in err_msg:
+            err_msg += " (İpucu: Render.com AWS veri merkezi IP'si Cloudflare tarafından kısıtlanmış olabilir. Render Environment ayarlarından USEAI_PROXY ekleyerek aşabilirsiniz.)"
+        print(f"[RESET ERROR] {err_msg}", flush=True)
         return (
-            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}),
+            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {err_msg}"}),
             500,
         )
 
