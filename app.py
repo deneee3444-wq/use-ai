@@ -30,12 +30,12 @@ app.secret_key = os.urandom(24)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "[api.use.ai](https://api.use.ai)"
-AGENTS_BASE = "[agents.use.ai](https://agents.use.ai)"
-FILES_BASE = "[files.use.ai](https://files.use.ai)"
+API_BASE = "https://api.use.ai"
+AGENTS_BASE = "https://agents.use.ai"
+FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
-ORIGIN = "[use.ai](https://use.ai)"
-REFERER = "[use.ai](https://use.ai/)"
+ORIGIN = "https://use.ai"
+REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -519,7 +519,7 @@ def normalize_url(url: str | None) -> str:
         return f"https:{u}"
     if u.startswith("/"):
         return f"{FILES_BASE}{u}"
-    return f"[{u}](https://{u})"
+    return f"{u}https://{u}"
 
 
 def append_history(
