@@ -25,7 +25,7 @@ app.config["PROPAGATE_EXCEPTIONS"] = False
 API_BASE = "https://api.use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
-WS_BASE = "wss://use.ai"
+WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
@@ -1630,64 +1630,6 @@ def api_conversation_rename():
             return jsonify({"success": True, "title": title})
 
     return jsonify({"error": "Konuşma bulunamadı"}), 404
-
-@app.route("/api/debug/cf")
-def api_debug_cf():
-    if request.args.get("key") != APP_PASSWORD:
-        return jsonify({"error": "nope"}), 401
-
-    out = {}
-
-    # A) Ana zone'a düz GET — IP işaretli mi?
-    try:
-        r = requests.get(
-            "https://use.ai/tr",
-            headers={"user-agent": UA, "accept-language": "tr-TR,tr;q=0.9"},
-            timeout=20,
-            allow_redirects=False,
-        )
-        body = r.text[:400]
-        out["http"] = {
-            "status": r.status_code,
-            "cf_ray": r.headers.get("cf-ray"),
-            "cf_mitigated": r.headers.get("cf-mitigated"),
-            "server": r.headers.get("server"),
-            "got_cf_clearance": "cf_clearance" in r.cookies.get_dict(),
-            "got_cf_bm": "__cf_bm" in r.cookies.get_dict(),
-            "challenge_page": "Just a moment" in body or "challenge-platform" in body,
-            "body_head": body,
-        }
-    except Exception as e:
-        out["http"] = {"error": repr(e)}
-
-    # B) Render'ın çıkış IP'si ve ASN'i
-    try:
-        out["egress"] = requests.get("https://ipinfo.io/json", timeout=10).json()
-    except Exception as e:
-        out["egress"] = {"error": repr(e)}
-
-    # C) Gerçek WS handshake — 403'ün başlıklarını yakala
-    try:
-        client = UseAIClient()
-        client.bootstrap(model=DEFAULT_MODEL)
-        ws = websocket.create_connection(
-            _build_ws_url(client, str(uuid.uuid4())),
-            origin=ORIGIN,
-            header=_build_ws_headers(client),
-            timeout=WS_CONNECT_TIMEOUT,
-        )
-        ws.close()
-        out["ws"] = {"ok": True}
-    except websocket.WebSocketBadStatusException as e:
-        out["ws"] = {
-            "status": e.status_code,
-            "headers": dict(e.resp_headers or {}),
-        }
-    except Exception as e:
-        out["ws"] = {"error": repr(e)}
-
-    return jsonify(out)
-
 
 
 if __name__ == "__main__":
