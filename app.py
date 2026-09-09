@@ -228,28 +228,12 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """1. GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
+        """Oturumu ve kimlikleri hazırlar (Cloudflare HTML engeline takılmamak için doğrudan API kullanılır)."""
         self.session = new_session()
-        r = self.session.get(
-            f"{API_BASE}/tr",
-            headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-            },
-        )
-        _check_resp("1. GET /tr", r)
-
-        # Çerezleri otomatik yakala, yoksa yeni UUID üret
-        self.mixpanel_id = self.session.cookies.get(
-            "guest_mixpanel_id"
-        ) or str(uuid.uuid4())
-        self.guest_id = self.session.cookies.get("guest_user_id") or str(
-            uuid.uuid4()
-        )
+        self.mixpanel_id = str(uuid.uuid4())
+        self.guest_id = str(uuid.uuid4())
+        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
+        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
 
         # 2 ve 4. adımlar (pre-auth session kontrolü)
         try:
@@ -425,7 +409,7 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.init_session()  # 1. Oturumu ve çerezleri hazırla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT & token
