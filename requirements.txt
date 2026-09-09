@@ -2,4 +2,3 @@ flask
 requests
 gunicorn
 websocket-client
-curl_cffi
