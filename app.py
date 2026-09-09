@@ -12,7 +12,10 @@ import uuid
 import ssl
 from datetime import datetime
 
-import requests
+# Cloudflare TLS/JA3 bypass için curl_cffi kullanıyoruz.
+# API `requests` ile birebir uyumlu; sadece Session'a impersonate parametresi ekleniyor.
+from curl_cffi import requests
+
 import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
@@ -34,11 +37,17 @@ UA = (
 )
 APP_PASSWORD = "123"
 
+# curl_cffi kendi TLS handshake'ini yönettiği için bu SSL_CIPHERS artık HTTP için
+# kullanılmıyor; sadece WebSocket (websocket-client) tarafında geçerli.
 SSL_CIPHERS = (
     "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
     "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
     "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
 )
+
+# curl_cffi Session için taklit edilecek tarayıcı parmak izi.
+# Cloudflare bloklarsa "chrome131", "chrome120", "chrome123" gibi alternatifleri dene.
+IMPERSONATE_BROWSER = "chrome124"
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -174,8 +183,12 @@ def rand_email() -> str:
     return f"{local}@spamok.com"
 
 
-def new_session() -> requests.Session:
-    s = requests.Session()
+def new_session():
+    """
+    curl_cffi.requests.Session — Chrome TLS/JA3 parmak izini taklit eder.
+    Cloudflare bu handshake'i normal bir tarayıcı olarak görür, 403 yemezsin.
+    """
+    s = requests.Session(impersonate=IMPERSONATE_BROWSER)
     s.headers.update(
         {
             "accept": "*/*",
@@ -205,7 +218,7 @@ def guess_mime(path: str, filename: str = None) -> str:
 class UseAIClient:
 
     def __init__(self):
-        self.session: requests.Session | None = None
+        self.session = None  # curl_cffi.requests.Session
         self.email: str = ""
         self.user_id: str = ""
         self.mixpanel_id: str = ""
@@ -219,12 +232,38 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
+        """
+        Oturumu başlatır:
+          1) curl_cffi Session (Chrome TLS taklidi)
+          2) guest_user_id / guest_mixpanel_id çerezlerini set eder
+          3) https://use.ai/tr sayfasına GET atarak Cloudflare __cf_bm cookie'sini toplar
+             (bu warm-up olmadan bazı bölgelerde /v1/auth çağrıları 403 döner)
+        """
         self.session = new_session()
         self.mixpanel_id = str(uuid.uuid4())
         self.guest_id = str(uuid.uuid4())
         self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
         self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
+
+        # Cloudflare warm-up — __cf_bm cookie'sini almak için gerçek sayfa ziyareti
+        warmup_headers = {
+            "accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8,"
+                "application/signed-exchange;v=b3;q=0.7"
+            ),
+            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+        }
+        try:
+            self.session.get(f"{ORIGIN}/tr", headers=warmup_headers, timeout=20)
+        except Exception:
+            # Warm-up başarısız olursa da devam et; asıl çağrılar yine deneyecek.
+            pass
 
     def email_login(self):
         if self.session is None:
@@ -264,11 +303,6 @@ class UseAIClient:
         )
         r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
-        print(new_jwt)
-        try:
-            print(r.headers)
-        except Exception as e:
-            print(e)
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
@@ -326,13 +360,20 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. GET /tr ile çerezleri topla
-        self.email_login()  # 2. Email login
-        self.sign_in()  # 3. Credentials sign in
-        self.get_session()  # 4. Get session & JWT
-        self.set_model(model)  # 5. Model seçimi
-        self.app_attestation()  # 6. App attestation token
-        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
+        # 1. Session + GET /tr ile Cloudflare __cf_bm çerezini topla
+        self.init_session()
+        # 2. Email login (guest email üret ve gönder)
+        self.email_login()
+        # 3. Credentials sign in (userId elde et)
+        self.sign_in()
+        # 4. Get session -> JWT set-auth-jwt header'ından okunur
+        self.get_session()
+        # 5. Chat modeli seç
+        self.set_model(model)
+        # 6. App attestation token
+        self.app_attestation()
+        # 7. Initial vote / chat_id hazırlığı
+        self.vote()
         self.messages = []
 
 
@@ -695,7 +736,6 @@ def stream_message(
             )
         except Exception as e:
             connect_err = e
-            print(connect_err)
             ws = None
             if retry_cycle == 0:
                 continue
