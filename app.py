@@ -9,9 +9,11 @@ import string
 import time
 import urllib.parse
 import uuid
+import ssl
 from datetime import datetime
 
-from curl_cffi import CurlWsFlag, requests
+import requests
+import websocket
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -20,17 +22,23 @@ app.secret_key = os.urandom(24)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "https://use.ai"
-AGENTS_BASE = "https://use.ai/agent"
+API_BASE = "https://api.use.ai"
+AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
+
+SSL_CIPHERS = (
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -93,7 +101,7 @@ MODELS = {
     },
 }
 
-DEFAULT_MODEL = "gateway-fable-5"
+DEFAULT_MODEL = "gateway-opus-5"
 
 # ---------- IMAGE MODELS ----------
 IMAGE_MODELS = [
@@ -159,48 +167,31 @@ def new_sess(sid):
 
 
 def rand_email() -> str:
-    """10 haneli rastgele prefix üreterek @spaddfefmok.com döndürür."""
+    """10 haneli rastgele prefix üreterek @spamok.com döndürür."""
     local = "".join(
         random.choices(string.ascii_lowercase + string.digits, k=10)
     )
-    return f"{local}@spaddfefmok.com"
+    return f"{local}@spamok.com"
 
 
 def new_session() -> requests.Session:
-    proxy = (
-        os.environ.get("USEAI_PROXY")
-        or os.environ.get("HTTPS_PROXY")
-        or os.environ.get("HTTP_PROXY")
-    )
-    s = requests.Session(impersonate="chrome131", proxy=proxy)
+    s = requests.Session()
     s.headers.update(
         {
+            "accept": "*/*",
+            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "origin": ORIGIN,
+            "referer": REFERER,
             "user-agent": UA,
-            "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
-            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
         }
     )
     return s
-
-
-def _check_resp(step_name: str, r: requests.Response) -> requests.Response:
-    if r.status_code >= 400:
-        preview = (r.text or "")[:400].strip().replace("\r", " ").replace("\n", " ")
-        is_cf = (
-            "cf-ray" in r.headers
-            or "cloudflare" in (r.headers.get("server", "").lower())
-            or "<title>Just a moment...</title>" in preview
-            or "challenge-platform" in preview
-        )
-        cf_hint = ""
-        if is_cf:
-            cf_hint = " [Cloudflare WAF / Datacenter IP Koruması]"
-        msg = f"[{step_name}] HTTP {r.status_code}{cf_hint} ({r.url}): {preview}"
-        print(f"[USEAI ERROR] {msg}", flush=True)
-        raise RuntimeError(msg)
-    return r
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -228,26 +219,12 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve kimlikleri hazırlar (Cloudflare HTML engeline takılmamak için doğrudan API kullanılır)."""
+        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
         self.session = new_session()
         self.mixpanel_id = str(uuid.uuid4())
         self.guest_id = str(uuid.uuid4())
-        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
         self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
-
-        # 2 ve 4. adımlar (pre-auth session kontrolü)
-        try:
-            self.session.get(
-                f"{API_BASE}/v1/auth/get-session",
-                headers={"referer": f"{API_BASE}/tr"},
-            )
-            self.session.get(
-                f"{API_BASE}/v1/auth/get-session",
-                params={"disableCookieCache": "true"},
-                headers={"referer": f"{API_BASE}/tr"},
-            )
-        except Exception:
-            pass
+        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
 
     def email_login(self):
         if self.session is None:
@@ -255,23 +232,12 @@ class UseAIClient:
 
         self.email = rand_email()
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
-        headers = {
-            "origin": ORIGIN,
-            "referer": f"{API_BASE}/tr?authmodal=true",
-            "content-type": "application/json",
-            "accept": "*/*",
-            "cache-control": "no-cache",
-            "pragma": "no-cache",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-        }
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            headers=headers,
-            json=payload,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
         )
-        _check_resp("2. POST email-login", r)
+        r.raise_for_status()
 
     def sign_in(self):
         payload = {
@@ -281,99 +247,46 @@ class UseAIClient:
             "mid": self.mixpanel_id,
             "turnstileBypass": True,
         }
-        headers = {
-            "origin": ORIGIN,
-            "referer": f"{API_BASE}/tr?authmodal=true",
-            "content-type": "application/json",
-            "accept": "*/*",
-            "cache-control": "no-cache",
-            "pragma": "no-cache",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-        }
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            headers=headers,
-            json=payload,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
         )
-        _check_resp("3. POST sign-in", r)
+        r.raise_for_status()
         data = r.json()
-        self.user_id = data.get("userId", "")
+        self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
 
     def get_session(self):
-        headers = {"referer": f"{API_BASE}/tr"}
         r = self.session.get(
             f"{API_BASE}/v1/auth/get-session",
             params={"disableCookieCache": "true"},
-            headers=headers,
         )
-        _check_resp("4. GET get-session", r)
+        r.raise_for_status()
         new_jwt = r.headers.get("set-auth-jwt")
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
-        if data and "user" in data and "id" in data["user"]:
+        if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
 
-        # 8, 9, 10, 11. adımlar (profil ve limit bilgileri)
-        try:
-            self.session.get(f"{API_BASE}/v1/auth/get-session", headers=headers)
-            self.session.get(f"{API_BASE}/v1/billing/subscription/email", headers=headers)
-            self.session.get(f"{API_BASE}/v1/user-profile", headers=headers)
-            self.session.get(f"{API_BASE}/v1/limits", headers=headers)
-        except Exception:
-            pass
-
-        # 12. adım: /v1/auth/token ile güncel JWT token al
-        try:
-            r_tok = self.session.get(f"{API_BASE}/v1/auth/token", headers=headers)
-            if r_tok.status_code == 200:
-                tok = r_tok.json().get("token")
-                if tok:
-                    self.jwt = tok
-        except Exception:
-            pass
-
     def set_model(self, model: str = DEFAULT_MODEL):
-        headers = {
-            "origin": ORIGIN,
-            "referer": f"{API_BASE}/tr",
-            "content-type": "application/json",
-        }
-        try:
-            r = self.session.post(
-                f"{API_BASE}/v1/chat/set-model",
-                headers=headers,
-                json={"model": model},
-            )
-            if r.status_code == 200:
-                self.model = model
-            else:
-                self.model = DEFAULT_MODEL
-        except Exception:
-            self.model = DEFAULT_MODEL
+        r = self.session.post(
+            f"{API_BASE}/v1/chat/set-model",
+            headers={"content-type": "application/json"},
+            data=json.dumps({"model": model}),
+        )
+        r.raise_for_status()
+        self.model = model
 
     def app_attestation(self):
-        headers = {
-            "origin": ORIGIN,
-            "referer": f"{API_BASE}/tr?authmodal=true",
-            "content-type": "application/json",
-            "accept": "*/*",
-            "cache-control": "no-cache",
-            "pragma": "no-cache",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-        }
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            headers=headers,
-            json={},
+            headers={"content-type": "application/json"},
+            data="{}",
         )
-        _check_resp("5. POST app-attestation", r)
-        self.app_token = r.json().get("token", "")
+        r.raise_for_status()
+        self.app_token = r.json()["token"]
 
     def vote(self, chat_id: str | None = None):
         if chat_id:
@@ -381,15 +294,14 @@ class UseAIClient:
         elif not self.chat_id:
             self.chat_id = str(uuid.uuid4())
         r = self.session.get(
-            f"{API_BASE}/agent/vote",
+            f"{AGENTS_BASE}/vote",
             params={"chatId": self.chat_id},
             headers={
-                "referer": f"{API_BASE}/tr/{self.chat_id}",
                 "authorization": f"Bearer {self.jwt}",
                 "x-guest-user-id": f"guest:{self.guest_id}",
             },
         )
-        _check_resp("6. GET vote", r)
+        r.raise_for_status()
         return self.chat_id
 
     def refresh_auth(self):
@@ -409,12 +321,12 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. Oturumu ve çerezleri hazırla
+        self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
-        self.get_session()  # 4. Get session & JWT & token
-        self.app_attestation()  # 5. App attestation token
-        self.set_model(model)  # 6. Model seçimi
+        self.get_session()  # 4. Get session & JWT
+        self.set_model(model)  # 5. Model seçimi
+        self.app_attestation()  # 6. App attestation token
         self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
@@ -603,10 +515,10 @@ def _switch_to_conv(sess, conv_id):
 
 
 # ===================== CHAT STREAM =====================
-def _build_ws_url(client):
+def _build_ws_url(client, agent_room):
     encoded_email = urllib.parse.quote(client.email)
     return (
-        f"{WS_BASE}/agents/budget-agent/{client.chat_id}"
+        f"{WS_BASE}/agents/budget-agent/{agent_room}"
         f"?token={client.jwt}"
         f"&app_token={client.app_token}"
         f"&userId={client.user_id}"
@@ -617,6 +529,23 @@ def _build_ws_url(client):
         f"&freemiumFunnel=false"
         f"&botd_verdict=clean"
     )
+
+
+def _build_ws_headers(client):
+    cookie_str = ""
+    if client and client.session:
+        cookie_str = "; ".join(
+            [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
+        )
+    headers = [
+        f"User-Agent: {UA}",
+        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control: no-cache",
+        "Pragma: no-cache",
+    ]
+    if cookie_str:
+        headers.append(f"Cookie: {cookie_str}")
+    return headers
 
 
 def stream_message(
@@ -632,6 +561,7 @@ def stream_message(
     on_delta=None,
     on_images=None,
 ):
+    agent_room = str(uuid.uuid4())
     user_msg_id = "".join(
         random.choices(string.ascii_letters + string.digits, k=16)
     )
@@ -743,27 +673,21 @@ def stream_message(
             payload["email"] = client.email
             payload["mixpanelUserId"] = client.mixpanel_id
 
+        current_room = str(uuid.uuid4())
         ws = None
         connect_err = None
 
         try:
-            ws = client.session.ws_connect(
-                _build_ws_url(client),
-                headers={
-                    "Origin": ORIGIN,
-                    "Referer": f"{ORIGIN}/tr/{client.chat_id}",
-                },
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.set_ciphers(SSL_CIPHERS)
+            ws_headers = _build_ws_headers(client)
+            ws = websocket.create_connection(
+                _build_ws_url(client, current_room),
+                origin=ORIGIN,
+                sslopt={"context": ssl_ctx},
+                header=ws_headers,
+                timeout=WS_CONNECT_TIMEOUT,
             )
-            # Prewarm mesajı (Step 15)
-            try:
-                prewarm = {
-                    "type": "prewarm",
-                    "chatId": client.chat_id,
-                    "requestId": str(uuid.uuid4()),
-                }
-                ws.send(json.dumps(prewarm), flags=CurlWsFlag.TEXT)
-            except Exception:
-                pass
         except Exception as e:
             connect_err = e
             ws = None
@@ -775,6 +699,7 @@ def stream_message(
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
+        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -791,7 +716,7 @@ def stream_message(
 
         try:
             try:
-                ws.send(json.dumps(payload), flags=CurlWsFlag.TEXT)
+                ws.send(json.dumps(payload))
 
                 while True:
                     if sess.get("aborted"):
@@ -801,8 +726,8 @@ def stream_message(
                             break
 
                     try:
-                        raw, flags = ws.recv()
-                    except Exception as recv_err:
+                        raw = ws.recv()
+                    except websocket.WebSocketTimeoutException:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
@@ -811,16 +736,12 @@ def stream_message(
                         ):
                             last_ping = now
                             yield ": keepalive\n\n"
-                        err_str = str(recv_err).lower()
-                        if "closed" in err_str or "invalid" in err_str:
-                            break
                         continue
-
-                    if not raw or (flags & CurlWsFlag.CLOSE):
+                    except Exception:
                         break
 
-                    if isinstance(raw, bytes):
-                        raw = raw.decode("utf-8", errors="replace")
+                    if not raw:
+                        break
 
                     last_data = time.time()
 
@@ -1458,12 +1379,8 @@ def api_reset():
     except Exception as e:
         if old_sess:
             _sessions[sid] = old_sess
-        err_msg = str(e)
-        if "Cloudflare" in err_msg or "403" in err_msg:
-            err_msg += " (İpucu: Render.com AWS veri merkezi IP'si Cloudflare tarafından kısıtlanmış olabilir. Render Environment ayarlarından USEAI_PROXY ekleyerek aşabilirsiniz.)"
-        print(f"[RESET ERROR] {err_msg}", flush=True)
         return (
-            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {err_msg}"}),
+            jsonify({"success": False, "error": f"Hesap oluşturulamadı: {str(e)}"}),
             500,
         )
 
