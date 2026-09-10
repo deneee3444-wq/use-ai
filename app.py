@@ -32,8 +32,9 @@ UA = (
 )
 APP_PASSWORD = "123"
 
-# ===================== PROXY =====================
-PROXY_URL = "http://uyvnbarw-1:hk5g6mfxwz44@p.webshare.io:80"
+PROXY_URL = os.environ.get(
+    "PROXY_URL", "http://uyvnbarw-1:hk5g6mfxwz44@p.webshare.io:80"
+)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -678,6 +679,7 @@ def stream_message(
                 _build_ws_url(client, current_room),
                 headers=_build_ws_headers(client),
                 proxy=PROXY_URL,
+                impersonate="safari17_0",
                 timeout=WS_CONNECT_TIMEOUT,
             )
             prewarm = {
