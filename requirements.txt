@@ -1,6 +1,3 @@
 flask
-requests
 gunicorn
-websocket-client
-PySocks
-python-socks
+curl_cffi
