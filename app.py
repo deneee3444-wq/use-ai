@@ -9,11 +9,9 @@ import string
 import time
 import urllib.parse
 import uuid
-import ssl
 from datetime import datetime
 
-import requests
-import websocket
+from curl_cffi import CurlWsFlag, requests
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -21,39 +19,8 @@ app.secret_key = os.urandom(24)
 # debug=True olsa bile hatalar HTML değil JSON dönsün (frontend'teki "Unexpected token <" fix)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
-# ===================== RENDER TOR PROXY CONFIG =====================
-RENDER_PROXY_URL = os.environ.get(
-    "RENDER_PROXY_URL", "https://tor-proxy-oko5.onrender.com"
-).rstrip("/")
-RENDER_WS_PROXY_URL = (
-    RENDER_PROXY_URL.replace("https://", "wss://").replace("http://", "ws://")
-)
-RENDER_API_TOKEN = os.environ.get("RENDER_API_TOKEN", "mySecretToken123")
-
-
-class RenderTorAdapter(requests.adapters.HTTPAdapter):
-    """Bütün giden HTTP/HTTPS isteklerini Render Tor proxy servisi üzerinden yönlendirir."""
-
-    def __init__(self, proxy_base: str, token: str, *args, **kwargs):
-        self.proxy_base = proxy_base.rstrip("/")
-        self.token = token
-        super().__init__(*args, **kwargs)
-
-    def send(self, request, **kwargs):
-        orig_url = request.url
-        if not orig_url.startswith(self.proxy_base):
-            quoted_url = urllib.parse.quote(orig_url, safe="")
-            request.url = f"{self.proxy_base}/?url={quoted_url}&token={self.token}"
-        resp = super().send(request, **kwargs)
-        # requests'in cookiejar'ının Domain=.use.ai çerezlerini kabul edebilmesi
-        # ve doğru domain ile ilişkilendirebilmesi için URL orijinal haline çekilir
-        request.url = orig_url
-        resp.url = orig_url
-        return resp
-
-
 # ===================== CONSTANTS =====================
-API_BASE = "https://api.use.ai"
+API_BASE = "https://use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
@@ -61,15 +28,9 @@ ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
-
-SSL_CIPHERS = (
-    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
-    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
-)
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -206,26 +167,7 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    s = requests.Session()
-    adapter = RenderTorAdapter(RENDER_PROXY_URL, RENDER_API_TOKEN)
-    s.mount("https://", adapter)
-    s.mount("http://", adapter)
-    s.headers.update(
-        {
-            "accept": "*/*",
-            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "origin": ORIGIN,
-            "referer": REFERER,
-            "user-agent": UA,
-            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
-        }
-    )
-    return s
+    return requests.Session(impersonate="chrome136")
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -253,12 +195,18 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
+        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
         self.session = new_session()
-        self.mixpanel_id = str(uuid.uuid4())
-        self.guest_id = str(uuid.uuid4())
-        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
-        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
+        r = self.session.get(f"{API_BASE}/tr")
+        r.raise_for_status()
+
+        # Çerezleri otomatik yakala, yoksa yeni UUID üret
+        self.mixpanel_id = self.session.cookies.get(
+            "guest_mixpanel_id"
+        ) or str(uuid.uuid4())
+        self.guest_id = self.session.cookies.get("guest_user_id") or str(
+            uuid.uuid4()
+        )
 
     def email_login(self):
         if self.session is None:
@@ -268,8 +216,8 @@ class UseAIClient:
         payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
+            headers={"origin": ORIGIN, "referer": f"{ORIGIN}/tr?authmodal=true"},
+            json=payload,
         )
         r.raise_for_status()
 
@@ -283,13 +231,19 @@ class UseAIClient:
         }
         r = self.session.post(
             f"{API_BASE}/v1/auth/sign-in/credentials",
-            headers={"content-type": "application/json"},
-            data=json.dumps(payload),
+            headers={"origin": ORIGIN, "referer": f"{ORIGIN}/tr?authmodal=true"},
+            json=payload,
         )
         r.raise_for_status()
         data = r.json()
         self.user_id = data["userId"]
         self.auth_token = r.headers.get("set-auth-token", "")
+
+    def get_token(self):
+        r = self.session.get(f"{API_BASE}/v1/auth/token")
+        r.raise_for_status()
+        self.jwt = r.json().get("token", "")
+        return self.jwt
 
     def get_session(self):
         r = self.session.get(
@@ -301,23 +255,25 @@ class UseAIClient:
         if new_jwt:
             self.jwt = new_jwt
         data = r.json()
-        if data and isinstance(data, dict) and data.get("user") and isinstance(data["user"], dict) and "id" in data["user"]:
+        if "user" in data and "id" in data["user"]:
             self.user_id = data["user"]["id"]
+        if not self.jwt:
+            self.get_token()
 
     def set_model(self, model: str = DEFAULT_MODEL):
         r = self.session.post(
             f"{API_BASE}/v1/chat/set-model",
-            headers={"content-type": "application/json"},
-            data=json.dumps({"model": model}),
+            headers={"origin": ORIGIN},
+            json={"model": model},
         )
-        #r.raise_for_status()
+        r.raise_for_status()
         self.model = model
 
     def app_attestation(self):
         r = self.session.post(
             f"{API_BASE}/v1/auth/app-attestation",
-            headers={"content-type": "application/json"},
-            data="{}",
+            headers={"origin": ORIGIN},
+            json={},
         )
         r.raise_for_status()
         self.app_token = r.json()["token"]
@@ -342,6 +298,10 @@ class UseAIClient:
         """Bayatlamış jwt/app_token'ı tazeler (uzun bekleme sonrası WS handshake fix)."""
         try:
             self.get_session()
+        except Exception:
+            pass
+        try:
+            self.get_token()
         except Exception:
             pass
         try:
@@ -711,29 +671,18 @@ def stream_message(
         ws = None
         connect_err = None
 
-        target_ws_url = _build_ws_url(client, current_room)
-        quoted_ws_url = urllib.parse.quote(target_ws_url, safe="")
-        cookie_str = ""
-        if client and client.session:
-            cookie_str = "; ".join(
-                [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
-            )
-        quoted_cookies = urllib.parse.quote(cookie_str, safe="")
-        proxied_ws_url = (
-            f"{RENDER_WS_PROXY_URL}/ws?url={quoted_ws_url}&token={RENDER_API_TOKEN}&cookies={quoted_cookies}"
-        )
-
         try:
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.set_ciphers(SSL_CIPHERS)
-            ws_headers = _build_ws_headers(client)
-            ws = websocket.create_connection(
-                proxied_ws_url,
-                origin=ORIGIN,
-                sslopt={"context": ssl_ctx},
-                header=ws_headers,
+            ws = client.session.ws_connect(
+                _build_ws_url(client, current_room),
+                headers={"Origin": ORIGIN},
                 timeout=WS_CONNECT_TIMEOUT,
             )
+            prewarm = {
+                "type": "prewarm",
+                "chatId": current_room,
+                "requestId": str(uuid.uuid4()),
+            }
+            ws.send(json.dumps(prewarm).encode(), flags=CurlWsFlag.TEXT)
         except Exception as e:
             connect_err = e
             ws = None
@@ -745,7 +694,6 @@ def stream_message(
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
-        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -762,7 +710,7 @@ def stream_message(
 
         try:
             try:
-                ws.send(json.dumps(payload))
+                ws.send(json.dumps(payload).encode(), flags=CurlWsFlag.TEXT)
 
                 while True:
                     if sess.get("aborted"):
@@ -772,8 +720,11 @@ def stream_message(
                             break
 
                     try:
-                        raw = ws.recv()
-                    except websocket.WebSocketTimeoutException:
+                        raw, _ = ws.recv()
+                        if not raw:
+                            break
+                        raw = raw.decode("utf-8", errors="ignore")
+                    except Exception:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
@@ -783,11 +734,6 @@ def stream_message(
                             last_ping = now
                             yield ": keepalive\n\n"
                         continue
-                    except Exception:
-                        break
-
-                    if not raw:
-                        break
 
                     last_data = time.time()
 
@@ -1679,10 +1625,8 @@ def api_conversation_rename():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
-    print("Use AI Web Interface (Render Tor Proxy Modu) başlatılıyor...")
-    print(f"Bağlanılan Render Tor Proxy: {RENDER_PROXY_URL}")
-    print(f"http://localhost:{port} adresine gidin")
+    print("Use AI Web Interface başlatılıyor...")
+    print("http://localhost:5000 adresine gidin")
     app.run(
-        debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=False
+        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
     )
