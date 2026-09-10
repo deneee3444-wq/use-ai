@@ -11,7 +11,7 @@ import urllib.parse
 import uuid
 from datetime import datetime
 
-from curl_cffi import CurlWsFlag, requests
+from curl_cffi import CurlMime, CurlWsFlag, requests
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -1196,15 +1196,15 @@ def api_upload():
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
 
-    files = {
-        "name": (None, filename),
-        "type": (None, mime),
-        "file": (filename, file_bytes, mime),
-    }
+    mp = CurlMime.from_list([
+        {"name": "name", "data": filename.encode("utf-8")},
+        {"name": "type", "data": mime.encode("utf-8")},
+        {"name": "file", "filename": filename, "content_type": mime, "data": file_bytes},
+    ])
     try:
         r = client.session.post(
             f"{FILES_BASE}/upload",
-            files=files,
+            multipart=mp,
             headers={"authorization": f"Bearer {client.jwt}"},
             timeout=60,
         )
