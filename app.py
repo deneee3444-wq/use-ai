@@ -27,10 +27,13 @@ WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 APP_PASSWORD = "123"
+
+# ===================== PROXY =====================
+PROXY_URL = "http://uyvnbarw-1:hk5g6mfxwz44@p.webshare.io:80"
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -167,7 +170,7 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    return requests.Session(impersonate="chrome136")
+    return requests.Session(impersonate="safari17_0", proxy=PROXY_URL)
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -531,14 +534,13 @@ def _build_ws_headers(client):
         cookie_str = "; ".join(
             [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
         )
-    headers = [
-        f"User-Agent: {UA}",
-        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control: no-cache",
-        "Pragma: no-cache",
-    ]
+    headers = {
+        "Origin": ORIGIN,
+        "User-Agent": UA,
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
     if cookie_str:
-        headers.append(f"Cookie: {cookie_str}")
+        headers["Cookie"] = cookie_str
     return headers
 
 
@@ -674,7 +676,8 @@ def stream_message(
         try:
             ws = client.session.ws_connect(
                 _build_ws_url(client, current_room),
-                headers={"Origin": ORIGIN},
+                headers=_build_ws_headers(client),
+                proxy=PROXY_URL,
                 timeout=WS_CONNECT_TIMEOUT,
             )
             prewarm = {
