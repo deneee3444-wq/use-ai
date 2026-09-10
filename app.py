@@ -132,7 +132,7 @@ MODELS = {
     },
 }
 
-DEFAULT_MODEL = "gateway-opus-5"
+DEFAULT_MODEL = "gateway-gpt-6-astra"
 
 # ---------- IMAGE MODELS ----------
 IMAGE_MODELS = [
