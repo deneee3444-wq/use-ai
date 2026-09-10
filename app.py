@@ -310,7 +310,7 @@ class UseAIClient:
             headers={"content-type": "application/json"},
             data=json.dumps({"model": model}),
         )
-        r.raise_for_status()
+        #r.raise_for_status()
         self.model = model
 
     def app_attestation(self):
