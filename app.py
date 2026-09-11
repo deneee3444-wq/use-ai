@@ -34,6 +34,27 @@ UA = (
 )
 APP_PASSWORD = "123"
 
+PROXY_URL = os.environ.get(
+    "PROXY_URL", "http://yqojrzlt-6:hqd64t4tx8ee@p.webshare.io:80"
+)
+
+
+def _get_proxy_config():
+    if not PROXY_URL:
+        return None
+    p = urllib.parse.urlparse(PROXY_URL)
+    scheme = p.scheme.lower() if p.scheme else "http"
+    host = p.hostname
+    port = p.port or 80
+    auth = (p.username, p.password) if p.username else None
+    return {
+        "url": PROXY_URL,
+        "scheme": scheme,
+        "host": host,
+        "port": port,
+        "auth": auth,
+    }
+
 SSL_CIPHERS = (
     "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
     "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
@@ -176,6 +197,11 @@ def rand_email() -> str:
 
 def new_session() -> requests.Session:
     s = requests.Session()
+    if PROXY_URL:
+        s.proxies = {
+            "http": PROXY_URL,
+            "https": PROXY_URL,
+        }
     s.headers.update(
         {
             "accept": "*/*",
@@ -707,12 +733,25 @@ def stream_message(
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.set_ciphers(SSL_CIPHERS)
             ws_headers = _build_ws_headers(client)
+
+            ws_kwargs = {
+                "origin": ORIGIN,
+                "sslopt": {"context": ssl_ctx},
+                "header": ws_headers,
+                "timeout": WS_CONNECT_TIMEOUT,
+            }
+            p_cfg = _get_proxy_config()
+            if p_cfg and p_cfg["host"]:
+                ws_kwargs["http_proxy_host"] = p_cfg["host"]
+                ws_kwargs["http_proxy_port"] = p_cfg["port"]
+                if p_cfg["auth"]:
+                    ws_kwargs["http_proxy_auth"] = p_cfg["auth"]
+                if p_cfg["scheme"].startswith("socks"):
+                    ws_kwargs["proxy_type"] = p_cfg["scheme"]
+
             ws = websocket.create_connection(
                 _build_ws_url(client, current_room),
-                origin=ORIGIN,
-                sslopt={"context": ssl_ctx},
-                header=ws_headers,
-                timeout=WS_CONNECT_TIMEOUT,
+                **ws_kwargs,
             )
             prewarm = {
                 "type": "prewarm",
@@ -1665,8 +1704,9 @@ def api_conversation_rename():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("Use AI Web Interface başlatılıyor...")
-    print("http://localhost:5000 adresine gidin")
+    print(f"http://localhost:{port} adresine gidin")
     app.run(
-        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
+        debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=False
     )
