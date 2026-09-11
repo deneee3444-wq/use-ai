@@ -635,7 +635,7 @@ def stream_message(
         "isStandaloneImageMode": False,
         "needsBlurPreview": True if image_mode else False,
         "deepResearchProcessor": "pro-fast",
-        "selectedModel": client.model,
+        "selectedModel": "gateway-gpt-6-astra", #client.model,
         "locale": "tr",
         "userTimezone": "Europe/Istanbul",
         "userCountry": "Turkey (TR)",
