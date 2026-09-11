@@ -9,11 +9,9 @@ import string
 import time
 import urllib.parse
 import uuid
-import ssl
 from datetime import datetime
 
-import requests
-import websocket
+from curl_cffi import CurlMime, CurlWsFlag, requests
 from flask import Flask, Response, jsonify, make_response, render_template, request
 
 app = Flask(__name__)
@@ -22,15 +20,15 @@ app.secret_key = os.urandom(24)
 app.config["PROPAGATE_EXCEPTIONS"] = False
 
 # ===================== CONSTANTS =====================
-API_BASE = "https://api.use.ai"
+API_BASE = "https://use.ai"
 AGENTS_BASE = "https://agents.use.ai"
 FILES_BASE = "https://files.use.ai"
 WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 APP_PASSWORD = "123"
 
@@ -39,27 +37,13 @@ PROXY_URL = os.environ.get(
 )
 
 
-def _get_proxy_config():
+def _get_proxy_url() -> str | None:
     if not PROXY_URL:
         return None
-    p = urllib.parse.urlparse(PROXY_URL)
-    scheme = p.scheme.lower() if p.scheme else "http"
-    host = p.hostname
-    port = p.port or 80
-    auth = (p.username, p.password) if p.username else None
-    return {
-        "url": PROXY_URL,
-        "scheme": scheme,
-        "host": host,
-        "port": port,
-        "auth": auth,
-    }
-
-SSL_CIPHERS = (
-    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
-    "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
-)
+    url = PROXY_URL.strip()
+    if url.startswith("socks5://"):
+        return "socks5h://" + url[len("socks5://"):]
+    return url
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -196,28 +180,8 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    s = requests.Session()
-    if PROXY_URL:
-        s.proxies = {
-            "http": PROXY_URL,
-            "https": PROXY_URL,
-        }
-    s.headers.update(
-        {
-            "accept": "*/*",
-            "accept-language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "origin": ORIGIN,
-            "referer": REFERER,
-            "user-agent": UA,
-            "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
-        }
-    )
-    return s
+    p = _get_proxy_url()
+    return requests.Session(impersonate="safari17_0", proxy=p if p else None)
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -245,25 +209,18 @@ class UseAIClient:
         self.model: str = DEFAULT_MODEL
 
     def init_session(self):
-        """Oturumu ve çerezleri (guest_mixpanel_id, guest_user_id) başlatır."""
+        """[ÇÖZÜM 1] İlk olarak GET /tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
         self.session = new_session()
-        self.mixpanel_id = str(uuid.uuid4())
-        self.guest_id = str(uuid.uuid4())
-        self.session.cookies.set("guest_user_id", self.guest_id, domain=".use.ai")
-        self.session.cookies.set("guest_mixpanel_id", self.mixpanel_id, domain=".use.ai")
+        r = self.session.get(f"{API_BASE}/tr")
+        r.raise_for_status()
 
-    def init_tr(self):
-        """[İsteğe Bağlı] GET https://use.ai/tr çağrısı yaparak sunucu çerezlerini (guest_mixpanel_id, guest_user_id) toplar."""
-        try:
-            r = self.session.get(f"{ORIGIN}/tr", timeout=15)
-            mp = self.session.cookies.get("guest_mixpanel_id")
-            gu = self.session.cookies.get("guest_user_id")
-            if mp:
-                self.mixpanel_id = mp
-            if gu:
-                self.guest_id = gu
-        except Exception:
-            pass
+        # Çerezleri otomatik yakala, yoksa yeni UUID üret
+        self.mixpanel_id = self.session.cookies.get(
+            "guest_mixpanel_id"
+        ) or str(uuid.uuid4())
+        self.guest_id = self.session.cookies.get("guest_user_id") or str(
+            uuid.uuid4()
+        )
 
     def email_login(self):
         if self.session is None:
@@ -297,7 +254,6 @@ class UseAIClient:
         self.auth_token = r.headers.get("set-auth-token", "")
 
     def get_token(self):
-        """Yeni JWT token alır (/v1/auth/token)."""
         r = self.session.get(f"{API_BASE}/v1/auth/token")
         r.raise_for_status()
         self.jwt = r.json().get("token", "")
@@ -372,14 +328,13 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. Çerezleri başlat
-        # self.init_tr()     # [İSTEĞE BAĞLI /TR ADIMI] - Yorum satırı, çalıştırılmıyor
+        self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
-        self.sign_in()      # 3. Credentials sign in
+        self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
         self.set_model(model)  # 5. Model seçimi
         self.app_attestation()  # 6. App attestation token
-        self.vote()         # 7. Initial vote / room hazirlik (self.chat_id set & voted)
+        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
@@ -589,14 +544,13 @@ def _build_ws_headers(client):
         cookie_str = "; ".join(
             [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
         )
-    headers = [
-        f"User-Agent: {UA}",
-        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control: no-cache",
-        "Pragma: no-cache",
-    ]
+    headers = {
+        "Origin": ORIGIN,
+        "User-Agent": UA,
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
     if cookie_str:
-        headers.append(f"Cookie: {cookie_str}")
+        headers["Cookie"] = cookie_str
     return headers
 
 
@@ -730,26 +684,15 @@ def stream_message(
         connect_err = None
 
         try:
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.set_ciphers(SSL_CIPHERS)
-            ws_headers = _build_ws_headers(client)
-
+            p = _get_proxy_url()
             ws_kwargs = {
-                "origin": ORIGIN,
-                "sslopt": {"context": ssl_ctx},
-                "header": ws_headers,
+                "headers": _build_ws_headers(client),
+                "impersonate": "safari17_0",
                 "timeout": WS_CONNECT_TIMEOUT,
             }
-            p_cfg = _get_proxy_config()
-            if p_cfg and p_cfg["host"]:
-                ws_kwargs["http_proxy_host"] = p_cfg["host"]
-                ws_kwargs["http_proxy_port"] = p_cfg["port"]
-                if p_cfg["auth"]:
-                    ws_kwargs["http_proxy_auth"] = p_cfg["auth"]
-                if p_cfg["scheme"].startswith("socks"):
-                    ws_kwargs["proxy_type"] = p_cfg["scheme"]
-
-            ws = websocket.create_connection(
+            if p:
+                ws_kwargs["proxy"] = p
+            ws = client.session.ws_connect(
                 _build_ws_url(client, current_room),
                 **ws_kwargs,
             )
@@ -758,7 +701,7 @@ def stream_message(
                 "chatId": current_room,
                 "requestId": str(uuid.uuid4()),
             }
-            ws.send(json.dumps(prewarm))
+            ws.send(json.dumps(prewarm).encode(), flags=CurlWsFlag.TEXT)
         except Exception as e:
             connect_err = e
             ws = None
@@ -770,7 +713,6 @@ def stream_message(
 
         client.messages.append(user_message)
         sess["active_ws"] = ws
-        ws.settimeout(0.5)
 
         assistant_text = ""
         assistant_id = ""
@@ -787,7 +729,7 @@ def stream_message(
 
         try:
             try:
-                ws.send(json.dumps(payload))
+                ws.send(json.dumps(payload).encode(), flags=CurlWsFlag.TEXT)
 
                 while True:
                     if sess.get("aborted"):
@@ -797,8 +739,11 @@ def stream_message(
                             break
 
                     try:
-                        raw = ws.recv()
-                    except websocket.WebSocketTimeoutException:
+                        raw, _ = ws.recv()
+                        if not raw:
+                            break
+                        raw = raw.decode("utf-8", errors="ignore")
+                    except Exception:
                         now = time.time()
                         if now - last_data > IDLE_TIMEOUT:
                             break
@@ -808,11 +753,6 @@ def stream_message(
                             last_ping = now
                             yield ": keepalive\n\n"
                         continue
-                    except Exception:
-                        break
-
-                    if not raw:
-                        break
 
                     last_data = time.time()
 
@@ -1270,15 +1210,15 @@ def api_upload():
     mime = guess_mime("", filename=filename)
     file_bytes = file.read()
 
-    files = {
-        "name": (None, filename),
-        "type": (None, mime),
-        "file": (filename, file_bytes, mime),
-    }
+    mp = CurlMime.from_list([
+        {"name": "name", "data": filename.encode("utf-8")},
+        {"name": "type", "data": mime.encode("utf-8")},
+        {"name": "file", "filename": filename, "content_type": mime, "data": file_bytes},
+    ])
     try:
         r = client.session.post(
             f"{FILES_BASE}/upload",
-            files=files,
+            multipart=mp,
             headers={"authorization": f"Bearer {client.jwt}"},
             timeout=60,
         )
