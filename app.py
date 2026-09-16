@@ -33,7 +33,7 @@ UA = (
 APP_PASSWORD = "123"
 
 PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://plasthjw-1:vh917rfhzcxi@p.webshare.io:80"
+    "PROXY_URL", "http://plasthjw-2:vh917rfhzcxi@p.webshare.io:80"
 )
 
 
