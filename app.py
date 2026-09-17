@@ -33,7 +33,7 @@ UA = (
 APP_PASSWORD = "123"
 
 PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://plasthjw-2:vh917rfhzcxi@p.webshare.io:80"
+    "PROXY_URL", "http://plasthjw-5:vh917rfhzcxi@p.webshare.io:80"
 )
 
 
@@ -328,7 +328,7 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        #self.init_session()  # 1. GET /tr ile çerezleri topla
+        self.init_session()  # 1. GET /tr ile çerezleri topla
         self.email_login()  # 2. Email login
         self.sign_in()  # 3. Credentials sign in
         self.get_session()  # 4. Get session & JWT
