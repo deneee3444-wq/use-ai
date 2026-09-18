@@ -33,7 +33,7 @@ UA = (
 APP_PASSWORD = "123"
 
 PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://plasthjw-10:vh917rfhzcxi@p.webshare.io:80"
+    "PROXY_URL", "http://yqojrzlt-6:hqd64t4tx8ee@p.webshare.io:80"
 )
 
 
@@ -1217,11 +1217,19 @@ def api_upload():
         {"name": "type", "data": mime.encode("utf-8")},
         {"name": "file", "filename": filename, "content_type": mime, "data": file_bytes},
     ])
+    upload_headers = {
+        "origin": ORIGIN,
+        "referer": f"{ORIGIN}/tr",
+        "x-user-id": client.user_id,
+    }
+    if client.jwt:
+        upload_headers["authorization"] = f"Bearer {client.jwt}"
+
     try:
         r = client.session.post(
-            f"{FILES_BASE}/upload",
+            f"{ORIGIN}/upload",
             multipart=mp,
-            headers={"authorization": f"Bearer {client.jwt}"},
+            headers=upload_headers,
             timeout=60,
         )
     except Exception as e:
