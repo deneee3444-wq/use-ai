@@ -63,6 +63,7 @@ MODELS = {
     "AKILLI MODELLER": {
         "Fable 5.1": "gateway-fable-5-1",
         "Fable 5": "gateway-fable-5",
+        "Opus 5.5": "gateway-opus-5-5",
         "Opus 5": "gateway-opus-5",
         "Opus 4.8": "gateway-opus-4-8",
         "GPT-6 Astra": "gateway-gpt-6-astra",
@@ -70,6 +71,7 @@ MODELS = {
         "GPT-5.5": "gateway-gpt-5-5",
         "Gemini 3.8 Flash": "gateway-gemini-3-8-flash",
         "Gemini 3.6 Flash": "gateway-gemini-3-6-flash",
+        "Grok 4.7": "gateway-grok-4-7",
         "Grok 4.6": "gateway-grok-4-6",
         "Grok 4.5": "gateway-grok-4-5",
         "Grok 4.3": "gateway-grok-4-3",
