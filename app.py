@@ -66,6 +66,7 @@ MODELS = {
         "Opus 5.5": "gateway-opus-5-5",
         "Opus 5": "gateway-opus-5",
         "Opus 4.8": "gateway-opus-4-8",
+        "Sonnet 5.5": "gateway-sonnet-5-5",
         "GPT-6 Astra": "gateway-gpt-6-astra",
         "GPT-5.6 Sol": "gateway-gpt-5-6",
         "GPT-5.5": "gateway-gpt-5-5",
