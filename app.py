@@ -27,8 +27,8 @@ WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_18_7) "
+    "AppleWebKit/610.1.15 (KHTML, like Gecko) Version/18.0 Safari/610.1.15"
 )
 APP_PASSWORD = "123"
 
