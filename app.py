@@ -28,23 +28,10 @@ WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 )
 APP_PASSWORD = "123"
-
-PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://tghpxuwn:dxrsnpsyz3df@45.38.107.97:6014"
-)
-
-
-def _get_proxy_url() -> str | None:
-    if not PROXY_URL:
-        return None
-    url = PROXY_URL.strip()
-    if url.startswith("socks5://"):
-        return "socks5h://" + url[len("socks5://"):]
-    return url
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -186,8 +173,7 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    p = _get_proxy_url()
-    return requests.Session(impersonate="safari17_0", proxy=p if p else None)
+    return requests.Session(impersonate="chrome136")
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -562,7 +548,7 @@ def _switch_to_conv(sess, conv_id):
 def _build_ws_url(client, agent_room):
     encoded_email = urllib.parse.quote(client.email)
     return (
-        f"{WS_BASE}/agents/budget-agent/{agent_room}"
+        f"{WS_BASE}/agents/thinking-chat/{agent_room}"
         f"?token={client.jwt}"
         f"&app_token={client.app_token}"
         f"&userId={client.user_id}"
@@ -581,13 +567,14 @@ def _build_ws_headers(client):
         cookie_str = "; ".join(
             [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
         )
-    headers = {
-        "Origin": ORIGIN,
-        "User-Agent": UA,
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    }
+    headers = [
+        f"User-Agent: {UA}",
+        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control: no-cache",
+        "Pragma: no-cache",
+    ]
     if cookie_str:
-        headers["Cookie"] = cookie_str
+        headers.append(f"Cookie: {cookie_str}")
     return headers
 
 
@@ -721,17 +708,10 @@ def stream_message(
         connect_err = None
 
         try:
-            p = _get_proxy_url()
-            ws_kwargs = {
-                "headers": _build_ws_headers(client),
-                "impersonate": "safari17_0",
-                "timeout": WS_CONNECT_TIMEOUT,
-            }
-            if p:
-                ws_kwargs["proxy"] = p
             ws = client.session.ws_connect(
                 _build_ws_url(client, current_room),
-                **ws_kwargs,
+                headers={"Origin": ORIGIN},
+                timeout=WS_CONNECT_TIMEOUT,
             )
             prewarm = {
                 "type": "prewarm",
@@ -1689,9 +1669,9 @@ def api_conversation_rename():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
     print("Use AI Web Interface başlatılıyor...")
-    print(f"http://localhost:{port} adresine gidin")
+    print("http://localhost:5000 adresine gidin")
     app.run(
-        debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=False
+        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
     )
+
