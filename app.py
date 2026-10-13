@@ -34,7 +34,7 @@ UA = (
 APP_PASSWORD = "123"
 
 PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://yqojrzlt-6:hqd64t4tx8ee@p.webshare.io:80"
+    "PROXY_URL", "http://tghpxuwn:dxrsnpsyz3df@45.38.107.97:6014"
 )
 
 
@@ -261,7 +261,7 @@ class UseAIClient:
                     for mail in data["mails"]:
                         if "use.ai" in mail.get("fromDomain", "").lower():
                             msg_r = requests.get(
-                                f"https://api.spamok.com/v2/EmailBox/{local}/{mail['id']}"
+                                f"https://api.spamok.com/v2/Email/{local}/{mail['id']}"
                             )
                             plain = msg_r.json().get("messagePlain", "")
                             match = re.search(r"\b(\d{6})\b", plain)
