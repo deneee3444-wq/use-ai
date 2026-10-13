@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import random
+import re
 import string
 import time
 import urllib.parse
@@ -27,13 +28,13 @@ WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_18_7) "
-    "AppleWebKit/610.1.15 (KHTML, like Gecko) Version/18.0 Safari/610.1.15"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 APP_PASSWORD = "123"
 
 PROXY_URL = os.environ.get(
-    "PROXY_URL", "http://nrrbciri-1:5cauzsujeluf@p.webshare.io:80"
+    "PROXY_URL", "http://yqojrzlt-6:hqd64t4tx8ee@p.webshare.io:80"
 )
 
 
@@ -232,7 +233,7 @@ class UseAIClient:
             self.init_session()
 
         self.email = rand_email()
-        payload = {"email": self.email, "mixpanelUserId": self.mixpanel_id}
+        payload = {"email": self.email, "supportsOtp": True}
         r = self.session.post(
             f"{API_BASE}/v1/auth/email-login",
             headers={"origin": ORIGIN, "referer": f"{ORIGIN}/tr?authmodal=true"},
@@ -240,23 +241,53 @@ class UseAIClient:
         )
         r.raise_for_status()
 
+    def send_verification_otp(self):
+        payload = {"email": self.email, "type": "sign-in", "turnstileBypass": True}
+        r = self.session.post(
+            f"{API_BASE}/v1/auth/email-otp/send-verification-otp",
+            headers={"origin": ORIGIN, "referer": f"{ORIGIN}/tr?authmodal=true"},
+            json=payload,
+        )
+        r.raise_for_status()
+
+    def fetch_otp(self, timeout=60):
+        """SpamOK'dan OTP kodunu çeker."""
+        local = self.email.replace("@spamok.com", "")
+        for _ in range(timeout // 2):
+            try:
+                r = requests.get(f"https://api.spamok.com/v2/EmailBox/{local}")
+                data = r.json()
+                if data.get("mails"):
+                    for mail in data["mails"]:
+                        if "use.ai" in mail.get("fromDomain", "").lower():
+                            msg_r = requests.get(
+                                f"https://api.spamok.com/v2/EmailBox/{local}/{mail['id']}"
+                            )
+                            plain = msg_r.json().get("messagePlain", "")
+                            match = re.search(r"\b(\d{6})\b", plain)
+                            if match:
+                                return match.group(1)
+            except Exception:
+                pass
+            time.sleep(2)
+        raise RuntimeError(f"OTP alınamadı ({timeout}s timeout)")
+
     def sign_in(self):
+        otp = self.fetch_otp()
         payload = {
             "email": self.email,
+            "otp": otp,
             "mixpanelUserId": self.mixpanel_id,
-            "guestId": self.guest_id,
-            "mid": self.mixpanel_id,
-            "turnstileBypass": True,
         }
         r = self.session.post(
-            f"{API_BASE}/v1/auth/sign-in/credentials",
+            f"{API_BASE}/v1/auth/sign-in/email-otp",
             headers={"origin": ORIGIN, "referer": f"{ORIGIN}/tr?authmodal=true"},
             json=payload,
         )
         r.raise_for_status()
         data = r.json()
-        self.user_id = data["userId"]
-        self.auth_token = r.headers.get("set-auth-token", "")
+        self.auth_token = data.get("token", "")
+        self.user_id = data.get("user", {}).get("id", "")
 
     def get_token(self):
         r = self.session.get(f"{API_BASE}/v1/auth/token")
@@ -333,13 +364,14 @@ class UseAIClient:
             pass
 
     def bootstrap(self, model: str = DEFAULT_MODEL):
-        self.init_session()  # 1. GET /tr ile çerezleri topla
-        self.email_login()  # 2. Email login
-        self.sign_in()  # 3. Credentials sign in
-        self.get_session()  # 4. Get session & JWT
-        self.set_model(model)  # 5. Model seçimi
-        self.app_attestation()  # 6. App attestation token
-        self.vote()  # 7. Initial vote / room hazirlik (self.chat_id set & voted)
+        self.init_session()          # 1. GET /tr ile çerezleri topla
+        self.email_login()           # 2. Email login
+        self.send_verification_otp() # 3. OTP doğrulama kodu gönder
+        self.sign_in()               # 4. SpamOK'dan OTP al & email-otp sign in
+        self.get_session()           # 5. Get session & JWT
+        self.set_model(model)        # 6. Model seçimi
+        self.app_attestation()       # 7. App attestation token
+        self.vote()                  # 8. Initial vote / room hazirlik (self.chat_id set & voted)
         self.messages = []
 
 
