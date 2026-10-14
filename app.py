@@ -28,10 +28,23 @@ WS_BASE = "wss://use.ai/agent"
 ORIGIN = "https://use.ai"
 REFERER = "https://use.ai/"
 UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
 APP_PASSWORD = "123"
+
+PROXY_URL = os.environ.get(
+    "PROXY_URL", "http://tghpxuwn:dxrsnpsyz3df@45.38.107.97:6014"
+)
+
+
+def _get_proxy_url() -> str | None:
+    if not PROXY_URL:
+        return None
+    url = PROXY_URL.strip()
+    if url.startswith("socks5://"):
+        return "socks5h://" + url[len("socks5://"):]
+    return url
 
 # Akış davranışı
 IDLE_TIMEOUT = 180.0  # bu kadar saniye hiç veri gelmezse akış ölmüş sayılır
@@ -46,6 +59,8 @@ MODELS = {
         "GPT-5.6 Luna": "gateway-gpt-5-6-luna",
         "GPT-5.4": "gateway-gpt-5-4",
         "Gemini 3.1 Pro": "gateway-gemini-3-1-pro",
+        "GLM 5.3": "gateway-glm-5-3",
+        "GLM 5.3 Flash": "gateway-glm-5-3-flash",
         "GLM 5.2": "gateway-glm-5-2",
     },
     "AKILLI MODELLER": {
@@ -55,6 +70,7 @@ MODELS = {
         "Opus 5": "gateway-opus-5",
         "Opus 4.8": "gateway-opus-4-8",
         "Sonnet 5.5": "gateway-sonnet-5-5",
+        "GPT-6.1 Sol": "gateway-gpt-6-1-sol",
         "GPT-6 Astra": "gateway-gpt-6-astra",
         "GPT-5.6 Sol": "gateway-gpt-5-6",
         "GPT-5.5": "gateway-gpt-5-5",
@@ -82,6 +98,7 @@ MODELS = {
         "Gemini 3 Flash": "gateway-gemini-3-flash",
         "DeepSeek V4 Pro": "gateway-deepseek-v4-pro",
         "DeepSeek V4 Flash": "gateway-deepseek-v4-flash",
+        "Qwen 3.7 Max": "gateway-qwen-3-7-max",
         "Qwen 3.5": "gateway-qwen-3-5-397b",
         "Kimi K2.6": "gateway-kimi-k2-6",
     },
@@ -173,7 +190,8 @@ def rand_email() -> str:
 
 
 def new_session() -> requests.Session:
-    return requests.Session(impersonate="chrome136")
+    p = _get_proxy_url()
+    return requests.Session(impersonate="safari17_0", proxy=p if p else None)
 
 
 def guess_mime(path: str, filename: str = None) -> str:
@@ -567,14 +585,13 @@ def _build_ws_headers(client):
         cookie_str = "; ".join(
             [f"{k}={v}" for k, v in client.session.cookies.get_dict().items()]
         )
-    headers = [
-        f"User-Agent: {UA}",
-        "Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control: no-cache",
-        "Pragma: no-cache",
-    ]
+    headers = {
+        "Origin": ORIGIN,
+        "User-Agent": UA,
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
     if cookie_str:
-        headers.append(f"Cookie: {cookie_str}")
+        headers["Cookie"] = cookie_str
     return headers
 
 
@@ -708,10 +725,17 @@ def stream_message(
         connect_err = None
 
         try:
+            p = _get_proxy_url()
+            ws_kwargs = {
+                "headers": _build_ws_headers(client),
+                "impersonate": "safari17_0",
+                "timeout": WS_CONNECT_TIMEOUT,
+            }
+            if p:
+                ws_kwargs["proxy"] = p
             ws = client.session.ws_connect(
                 _build_ws_url(client, current_room),
-                headers={"Origin": ORIGIN},
-                timeout=WS_CONNECT_TIMEOUT,
+                **ws_kwargs,
             )
             prewarm = {
                 "type": "prewarm",
@@ -1669,9 +1693,10 @@ def api_conversation_rename():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("Use AI Web Interface başlatılıyor...")
-    print("http://localhost:5000 adresine gidin")
+    print(f"http://localhost:{port} adresine gidin")
     app.run(
-        debug=True, host="0.0.0.0", port=5000, threaded=True, use_reloader=False
+        debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=False
     )
 
